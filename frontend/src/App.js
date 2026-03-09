@@ -1,4 +1,7 @@
 import { useState, useEffect, useRef } from "react";
+const API_URL = window.location.hostname === "localhost" 
+  ? "http://127.0.0.1:8000" 
+  : "https://examgenie-backend-jzyl.onrender.com";
 
 const SUBJECTS = [
   { label: "📐 Maths", value: "Maths" },
@@ -36,7 +39,7 @@ function QuizMode({ subject, onExit, weakTopics, onQuizComplete }) {
     setSelected(null); setAnswered(false); setFinished(false);
     setStarted(true); setWrongTopics([]); setAnalysis(null);
     try {
-      const res = await fetch("http://127.0.0.1:8000/quiz", {
+      const res = await fetch(`${API_URL}/quiz`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           subject, topic, language, level,
@@ -68,7 +71,7 @@ function QuizMode({ subject, onExit, weakTopics, onQuizComplete }) {
       if (wrongTopics.length > 0) {
         setAnalyzing(true);
         try {
-          const res = await fetch("http://127.0.0.1:8000/analyze", {
+          const res = await fetch(`${API_URL}/analyze`, {
             method: "POST", headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ wrong_topics: wrongTopics, subject })
           });
@@ -374,7 +377,7 @@ export default function App() {
     updateChat(activeChat.id, { messages: msgs, title });
     setInput(""); setLoading(true);
     try {
-      const res = await fetch("http://127.0.0.1:8000/ask", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: `[Subject: ${activeChat.subject}] ${question}` }) });
+      const res = await fetch(`${API_URL}/ask`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: `[Subject: ${activeChat.subject}] ${question}` }) });
       const data = await res.json();
       updateChat(activeChat.id, { messages: [...msgs, { role: "ai", text: data.answer }] });
     } catch {
