@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+
 const API_URL = window.location.hostname === "localhost" 
   ? "http://127.0.0.1:8000" 
   : "https://examgenie-backend-jzyl.onrender.com";
@@ -94,7 +95,9 @@ function QuizMode({ subject, onExit, weakTopics, onQuizComplete }) {
       <div style={{ background: S.card, border: `1px solid ${S.border}`, borderRadius: "20px", padding: "20px", width: "100%", maxWidth: "520px" }}>
         <div style={{ textAlign: "center", marginBottom: "16px" }}>
           <span style={{ fontSize: "32px" }}>🏆</span>
+          
           <h2 style={{ color: S.green, margin: "4px 0 0", fontSize: "1.2rem" }}>Quiz Mode</h2>
+          
         </div>
 
         {/* Weak Focus Banner */}
@@ -339,7 +342,85 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [quizMode, setQuizMode] = useState(false);
+  const [examMode, setExamMode] = useState(false);
+  const [listening, setListening] = useState(false);
+  const [speaking, setSpeaking] = useState(false);
+  const [uploadedFile, setUploadedFile] = useState(null);
+  const [filePreview, setFilePreview] = useState(null);
+  const fileRef = useRef(null);
   const bottomRef = useRef(null);
+
+  // Voice Input
+function startVoice() {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) { alert("உன் browser voice support பண்றதில்ல!"); return; }
+  const recognition = new SpeechRecognition();
+  recognition.lang = "ta-IN";
+  recognition.interimResults = false;
+  recognition.onstart = () => setListening(true);
+  recognition.onend = () => setListening(false);
+  recognition.onresult = (e) => {
+    const text = e.results[0][0].transcript;
+    setInput(text);
+  };
+  recognition.onerror = () => setListening(false);
+  recognition.start();
+}
+
+// Voice Output
+function speak(text) {
+  if (!window.speechSynthesis) return;
+  window.speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(text);
+  const voices = window.speechSynthesis.getVoices();
+  // English India voice use பண்ணு
+  const indiaVoice = voices.find(v => v.name.includes("Ravi") || v.name.includes("Heera"));
+  if (indiaVoice) utterance.voice = indiaVoice;
+  utterance.lang = "en-IN";
+  utterance.rate = 0.9;
+  utterance.onstart = () => setSpeaking(true);
+  utterance.onend = () => setSpeaking(false);
+  window.speechSynthesis.speak(utterance);
+}
+function stopSpeak() {
+  window.speechSynthesis.cancel();
+  setSpeaking(false);
+}
+function handleFile(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    const base64 = reader.result.split(",")[1];
+    setUploadedFile({ base64, type: file.type, name: file.name });
+    if (file.type.startsWith("image")) {
+      setFilePreview(reader.result);
+    } else {
+      setFilePreview("pdf");
+    }
+  };
+  reader.readAsDataURL(file);
+}
+
+async function sendWithFile() {
+  if (!uploadedFile || loading) return;
+  const question = input || "இந்த file பத்தி விளக்கு";
+  const msgs = [...activeChat.messages, { role: "user", text: question, file: filePreview, fileName: uploadedFile.name }];
+  const title = activeChat.title === "New Chat" ? question.slice(0, 28) + "..." : activeChat.title;
+  updateChat(activeChat.id, { messages: msgs, title });
+  setInput(""); setLoading(true); setUploadedFile(null); setFilePreview(null);
+  try {
+    const res = await fetch(`${API_URL}/analyze-file`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ file_data: uploadedFile.base64, file_type: uploadedFile.type, question })
+    });
+    const data = await res.json();
+    updateChat(activeChat.id, { messages: [...msgs, { role: "ai", text: data.answer || data.error }] });
+  } catch {
+    updateChat(activeChat.id, { messages: [...msgs, { role: "ai", text: "❌ File analyze ஆகல!" }] });
+  }
+  setLoading(false);
+}
 
   const activeChat = chats.find(c => c.id === activeChatId) || chats[0];
   const S = { bg: "#0f0f0f", sidebar: "#1a1a1a", border: "#2a2a2a", green: "#4ade80", darkGreen: "#166534" };
@@ -377,7 +458,11 @@ export default function App() {
     updateChat(activeChat.id, { messages: msgs, title });
     setInput(""); setLoading(true);
     try {
-      const res = await fetch(`${API_URL}/ask`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: `[Subject: ${activeChat.subject}] ${question}` }) });
+      const res = await fetch(`${API_URL}/ask`, { method: "POST", headers: { "Content-Type": "application/json" },
+         body: JSON.stringify({text: `[Subject: ${activeChat.subject}] ${question}`,
+                               exam_mode: examMode,history: activeChat.messages.slice(-6).map(m => ({
+                                 role: m.role === "user" ? "user" : "assistant",content: m.text}))
+                              }) });
       const data = await res.json();
       updateChat(activeChat.id, { messages: [...msgs, { role: "ai", text: data.answer }] });
     } catch {
@@ -467,6 +552,10 @@ export default function App() {
               ⚠️ {weakTopics.length} weak topics
             </div>
           )}
+          <button onClick={() => setExamMode(e => !e)}
+  style={{ background: examMode ? "#1e3a5f" : "#2a2a2a", border: `1px solid ${examMode ? "#60a5fa" : S.border}`, color: examMode ? "#60a5fa" : "#9ca3af", borderRadius: "10px", padding: "8px 16px", fontWeight: "bold", fontSize: "13px", cursor: "pointer" }}>
+  {examMode ? "🎓 Exam Mode ON" : "🎓 Exam Mode"}
+</button>
           <button onClick={() => setQuizMode(q => !q)}
             style={{ marginLeft: "auto", background: quizMode ? S.darkGreen : "#2a2a2a", border: `1px solid ${quizMode ? S.green : S.border}`, color: quizMode ? "white" : S.green, borderRadius: "10px", padding: "8px 16px", fontWeight: "bold", fontSize: "13px", cursor: "pointer" }}>
             {quizMode ? "💬 Chat Mode" : "🏆 Quiz Mode"}
@@ -502,13 +591,43 @@ export default function App() {
                   </div>
                 </div>
               )}
-              {activeChat?.messages.map((m, i) => (
-                <div key={i} style={{ marginBottom: "16px", display: "flex", justifyContent: m.role === "user" ? "flex-end" : "flex-start", animation: "fadeIn 0.3s ease" }}>
-                  {m.role === "ai" && <div style={{ width: "32px", height: "32px", borderRadius: "50%", background: S.darkGreen, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "16px", marginRight: "8px", flexShrink: 0 }}>🧞</div>}
-                  <div style={{ maxWidth: "70%", padding: "12px 16px", borderRadius: m.role === "user" ? "18px 18px 4px 18px" : "18px 18px 18px 4px", background: m.role === "user" ? S.darkGreen : "#1e1e1e", color: "white", whiteSpace: "pre-wrap", lineHeight: "1.7", fontSize: "14px", border: m.role === "ai" ? `1px solid ${S.border}` : "none" }}>{m.text}</div>
-                  {m.role === "user" && <div style={{ width: "32px", height: "32px", borderRadius: "50%", background: "#1d4ed8", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "16px", marginLeft: "8px", flexShrink: 0 }}>👤</div>}
-                </div>
-              ))}
+           {activeChat?.messages.map((m, i) => (
+  <div key={i} style={{ marginBottom: "16px", display: "flex", justifyContent: m.role === "user" ? "flex-end" : "flex-start", animation: "fadeIn 0.3s ease" }}
+    onMouseEnter={e => e.currentTarget.querySelector('.msg-actions').style.opacity = "1"}
+    onMouseLeave={e => e.currentTarget.querySelector('.msg-actions').style.opacity = "0"}>
+    {m.role === "ai" && <div style={{ width: "32px", height: "32px", borderRadius: "50%", background: S.darkGreen, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "16px", marginRight: "8px", flexShrink: 0 }}>🧞</div>}
+    <div style={{ maxWidth: "85%", minWidth: "60%" }}>
+      <div style={{ padding: "12px 16px", borderRadius: m.role === "user" ? "18px 18px 4px 18px" : "18px 18px 18px 4px", background: m.role === "user" ? S.darkGreen : "#1e1e1e", color: "white", whiteSpace: "pre-wrap", lineHeight: "1.7", fontSize: "14px", border: m.role === "ai" ? `1px solid ${S.border}` : "none" }}>{m.text}</div>
+      <div className="msg-actions" style={{ display: "flex", gap: "6px", marginTop: "4px", justifyContent: m.role === "user" ? "flex-end" : "flex-start", opacity: "0", transition: "opacity 0.2s ease" }}>
+        <span style={{ color: "#4b5563", fontSize: "10px", alignSelf: "center" }}>
+          {new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+        </span>
+        <button onClick={() => navigator.clipboard.writeText(m.text)}
+          style={{ background: "none", border: `1px solid ${S.border}`, color: "#6b7280", borderRadius: "6px", padding: "2px 8px", fontSize: "11px", cursor: "pointer" }}>
+          📋 Copy
+        </button>
+        <button onClick={() => m.role === "ai" ? send(activeChat.messages[i - 1]?.text) : send(m.text)}
+          style={{ background: "none", border: `1px solid ${S.border}`, color: "#6b7280", borderRadius: "6px", padding: "2px 8px", fontSize: "11px", cursor: "pointer" }}>
+          🔄 Retry
+        </button>
+        {m.role === "user" && (
+          <button onClick={() => setInput(m.text)}
+            style={{ background: "none", border: `1px solid ${S.border}`, color: "#6b7280", borderRadius: "6px", padding: "2px 8px", fontSize: "11px", cursor: "pointer" }}>
+            ✏️ Edit
+          </button>
+        )}
+        {m.role === "ai" && (
+          <button onClick={() => speaking ? stopSpeak() : speak(m.text)}
+            style={{ background: "none", border: `1px solid ${S.border}`, color: speaking ? "#f87171" : "#6b7280", borderRadius: "6px", padding: "2px 8px", fontSize: "11px", cursor: "pointer" }}>
+            {speaking ? "⏹ Stop" : "🔊 Speak"}
+          </button>
+        )}
+      </div>
+    </div>
+    {m.role === "user" && <div style={{ width: "32px", height: "32px", borderRadius: "50%", background: "#1d4ed8", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "16px", marginLeft: "8px", flexShrink: 0 }}>👤</div>}
+  </div>
+))}
+
               {loading && (
                 <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                   <div style={{ width: "32px", height: "32px", borderRadius: "50%", background: S.darkGreen, display: "flex", alignItems: "center", justifyContent: "center" }}>🧞</div>
@@ -520,17 +639,52 @@ export default function App() {
               <div ref={bottomRef} />
             </div>
 
-            <div style={{ padding: "16px 20px", borderTop: `1px solid ${S.border}`, background: S.sidebar }}>
-              <div style={{ display: "flex", gap: "10px", alignItems: "center", background: "#2a2a2a", borderRadius: "14px", padding: "8px 8px 8px 16px" }}>
-                <input style={{ flex: 1, background: "none", border: "none", outline: "none", color: "white", fontSize: "15px", minWidth: 0 }}
-                  placeholder={`${activeChat?.subject} பத்தி கேளு...`}
-                  value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === "Enter" && send()} />
-                <button onClick={() => send()} style={{ background: loading ? "#14532d" : "linear-gradient(135deg, #166534, #15803d)", border: "none", borderRadius: "10px", padding: "10px 20px", color: "white", fontWeight: "bold", fontSize: "14px", cursor: "pointer", boxShadow: "0 4px 12px rgba(22,101,52,0.3)", whiteSpace: "nowrap" }}>
-                  {loading ? "..." : "கேளு ➤"}
-                </button>
-              </div>
-              <p style={{ textAlign: "center", fontSize: "11px", color: "#4b5563", margin: "8px 0 0" }}>ExamGenie • Free Tamil AI Tutor • Open Source</p>
-            </div>
+           <div style={{ borderTop: `1px solid ${S.border}`, background: S.sidebar }}>
+  {/* File Preview */}
+  {filePreview && (
+    <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "8px 16px", background: "#1a1a1a", borderBottom: `1px solid ${S.border}` }}>
+      {filePreview === "pdf"
+        ? <span style={{ fontSize: "24px" }}>📄</span>
+        : <img src={filePreview} alt="preview" style={{ width: "40px", height: "40px", borderRadius: "8px", objectFit: "cover" }} />
+      }
+      <span style={{ color: "#9ca3af", fontSize: "12px" }}>{uploadedFile?.name}</span>
+      <button onClick={() => { setUploadedFile(null); setFilePreview(null); }}
+        style={{ background: "none", border: "none", color: "#ef4444", cursor: "pointer", marginLeft: "auto", fontSize: "16px" }}>✕</button>
+    </div>
+  )}
+
+  {/* Input Box */}
+  <div style={{ padding: "16px 20px" }}>
+    <div style={{ display: "flex", gap: "10px", alignItems: "center", background: "#2a2a2a", borderRadius: "14px", padding: "8px 8px 8px 16px" }}>
+      {/* Hidden file input */}
+      <input type="file" ref={fileRef} onChange={handleFile} accept="image/*,.pdf" style={{ display: "none" }} />
+      
+      {/* Attach button */}
+      <button onClick={() => fileRef.current.click()}
+        style={{ background: "none", border: "none", color: "#6b7280", fontSize: "20px", cursor: "pointer", padding: "4px", flexShrink: 0 }}>
+        📎
+      </button>
+
+      {/* Text Input */}
+      <input style={{ flex: 1, background: "none", border: "none", outline: "none", color: "white", fontSize: "15px", minWidth: 0 }}
+        placeholder={uploadedFile ? `${uploadedFile.name} பத்தி கேளு...` : `${activeChat?.subject} பத்தி கேளு...`}
+        value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === "Enter" && (uploadedFile ? sendWithFile() : send())} />
+
+      {/* Voice button */}
+      <button onClick={listening ? () => setListening(false) : startVoice}
+        style={{ background: listening ? "#450a0a" : "none", border: `1px solid ${listening ? "#ef4444" : "transparent"}`, borderRadius: "10px", padding: "8px 10px", color: listening ? "#ef4444" : "#9ca3af", fontSize: "16px", cursor: "pointer", flexShrink: 0 }}>
+        {listening ? "🔴" : "🎤"}
+      </button>
+
+      {/* Send button */}
+      <button onClick={() => uploadedFile ? sendWithFile() : send()}
+        style={{ background: loading ? "#14532d" : "linear-gradient(135deg, #166534, #15803d)", border: "none", borderRadius: "10px", padding: "10px 20px", color: "white", fontWeight: "bold", fontSize: "14px", cursor: "pointer", boxShadow: "0 4px 12px rgba(22,101,52,0.3)", whiteSpace: "nowrap" }}>
+        {loading ? "..." : uploadedFile ? "📎 Send" : "கேளு ➤"}
+      </button>
+    </div>
+    <p style={{ textAlign: "center", fontSize: "11px", color: "#4b5563", margin: "8px 0 0" }}>ExamGenie • Free Tamil AI Tutor • Open Source</p>
+  </div>
+</div>
           </>
         }
       </div>

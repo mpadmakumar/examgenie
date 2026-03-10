@@ -1,21 +1,216 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from groq import Groq
+from tavily import TavilyClient
 from dotenv import load_dotenv
 import json
 import os
+import math
+import re
+import sqlite3
+import subprocess
+import tempfile
+import wikipediaapi
 
 load_dotenv()
 
 app = Flask(__name__)
 CORS(app)
 
+# ─── API CLIENTS ─────────────────────────────────────
 client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+tavily = TavilyClient(api_key=os.getenv("TAVILY_API_KEY"))
 
+# Gemini Key Rotation
+gemini_keys = [k for k in [os.getenv("GEMINI_API_KEY_1"), os.getenv("GEMINI_API_KEY_2"), os.getenv("GEMINI_API_KEY_3")] if k]
+gemini_key_index = 0
+
+# ─── PROMPTS ─────────────────────────────────────────
 SYSTEM_PROMPT = """நீ ExamGenie — Tamil students-க்கு help பண்ற AI tutor.
-Always explain in Tamil first, then English.
-Be encouraging, never discouraging. Use simple words."""
+உன்னை develop பண்ணவர் Padmakumar — Full Stack Developer & AI enthusiast.
 
+!!STRICT LANGUAGE RULE!!
+- Detect user's language from their message
+- Reply ONLY in that SAME language — NO mixing!
+- Tamil message → Tamil ONLY reply
+- English message → English ONLY reply
+- Tanglish message → Tanglish ONLY reply
+- NEVER add "In English:" or "In Tamil:" sections
+- NEVER translate your answer
+- ONE language per response — STRICTLY!
+
+Be encouraging. Use simple words.
+If asked who made you: 'என்னை உருவாக்கியவர் Padmakumar, a passionate Full Stack Developer.'"""
+
+EXAM_PROMPT = """நீ ExamGenie — Tamil students-க்கு TNPSC, NEET, JEE, 10th/12th TN Board exam help பண்ற AI tutor.
+Web search results கொடுக்கப்படும் — அதை வச்சு accurate answer சொல்லு.
+Always explain in Tamil first, then English.
+Syllabus, previous year questions, important topics — எல்லாம் accurate-ஆ சொல்லு."""
+
+# ─── MCP TOOLS ───────────────────────────────────────
+
+# Wikipedia
+wiki = wikipediaapi.Wikipedia(language='en', user_agent='ExamGenie/1.0')
+
+def tool_wikipedia(query):
+    try:
+        page = wiki.page(query)
+        if page.exists():
+            return page.summary[:1500]
+        return f"'{query}' Wikipedia-ல கிடைக்கல!"
+    except:
+        return "Wikipedia search failed!"
+
+# Calculator
+def tool_calculator(expression):
+    try:
+        allowed = {k: getattr(math, k) for k in dir(math) if not k.startswith('_')}
+        allowed['abs'] = abs
+        result = eval(expression, {"__builtins__": {}}, allowed)
+        return f"Result: {result}"
+    except Exception as e:
+        return f"Calculation error: {str(e)}"
+
+# Web Search
+def tool_web_search(query):
+    try:
+        results = tavily.search(query=query, search_depth="basic", max_results=3)
+        return "\n\n".join([r.get("content", "") for r in results.get("results", [])])
+    except:
+        return "Search failed!"
+
+# Code Executor
+NOTES_DIR = "student_notes"
+os.makedirs(NOTES_DIR, exist_ok=True)
+
+def tool_code_executor(code):
+    try:
+        dangerous = ['import os', 'import sys', 'subprocess', 'open(', '__import__',
+                    'eval(', 'exec(', 'shutil', 'requests', 'socket']
+        for d in dangerous:
+            if d in code:
+                return f"❌ Dangerous code blocked: {d}"
+        safe_code = "import math\nimport statistics\n" + code
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
+            f.write(safe_code)
+            tmp_path = f.name
+        result = subprocess.run(['python', tmp_path], capture_output=True, text=True, timeout=5)
+        os.unlink(tmp_path)
+        if result.returncode == 0:
+            return f"✅ Output:\n{result.stdout}"
+        else:
+            return f"❌ Error:\n{result.stderr}"
+    except subprocess.TimeoutExpired:
+        return "⏱ Code timeout!"
+    except Exception as e:
+        return f"Error: {str(e)}"
+
+# Database Tool
+def init_db():
+    conn = sqlite3.connect("examgenie.db")
+    c = conn.cursor()
+    c.execute('''CREATE TABLE IF NOT EXISTS student_progress
+                 (id INTEGER PRIMARY KEY, student_id TEXT, subject TEXT,
+                  score INTEGER, total INTEGER, weak_topics TEXT, timestamp TEXT)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS notes
+                 (id INTEGER PRIMARY KEY, student_id TEXT, title TEXT,
+                  content TEXT, subject TEXT, timestamp TEXT)''')
+    conn.commit()
+    conn.close()
+
+init_db()
+
+def tool_database(action, data={}):
+    try:
+        conn = sqlite3.connect("examgenie.db")
+        c = conn.cursor()
+        if action == "save_progress":
+            c.execute("INSERT INTO student_progress (student_id, subject, score, total, weak_topics, timestamp) VALUES (?,?,?,?,?,?)",
+                     (data.get("student_id", "default"), data.get("subject"),
+                      data.get("score"), data.get("total"),
+                      data.get("weak_topics", ""), data.get("timestamp", "")))
+            conn.commit()
+            return "Progress saved! ✅"
+        elif action == "get_progress":
+            c.execute("SELECT subject, score, total, timestamp FROM student_progress WHERE student_id=? ORDER BY id DESC LIMIT 10",
+                     (data.get("student_id", "default"),))
+            rows = c.fetchall()
+            conn.close()
+            if not rows:
+                return "Progress இல்ல!"
+            return "\n".join([f"📚 {r[0]}: {r[1]}/{r[2]} — {r[3]}" for r in rows])
+        elif action == "save_note":
+            c.execute("INSERT INTO notes (student_id, title, content, subject, timestamp) VALUES (?,?,?,?,?)",
+                     (data.get("student_id", "default"), data.get("title"),
+                      data.get("content"), data.get("subject"), data.get("timestamp", "")))
+            conn.commit()
+            conn.close()
+            return "Note saved! ✅"
+        elif action == "get_notes":
+            c.execute("SELECT title, content, subject FROM notes WHERE student_id=? ORDER BY id DESC LIMIT 5",
+                     (data.get("student_id", "default"),))
+            rows = c.fetchall()
+            conn.close()
+            if not rows:
+                return "Notes இல்ல!"
+            return "\n".join([f"📝 {r[0]} ({r[2]}): {r[1][:100]}" for r in rows])
+    except Exception as e:
+        return f"DB Error: {str(e)}"
+
+# File System Tool
+def tool_filesystem(action, data={}):
+    try:
+        if action == "save":
+            filename = f"{NOTES_DIR}/{data.get('filename', 'note')}.txt"
+            with open(filename, 'w', encoding='utf-8') as f:
+                f.write(data.get('content', ''))
+            return f"✅ Saved: {filename}"
+        elif action == "read":
+            filename = f"{NOTES_DIR}/{data.get('filename', 'note')}.txt"
+            if os.path.exists(filename):
+                with open(filename, 'r', encoding='utf-8') as f:
+                    return f.read()
+            return "File இல்ல!"
+        elif action == "list":
+            files = os.listdir(NOTES_DIR)
+            return "\n".join(files) if files else "Files இல்ல!"
+    except Exception as e:
+        return f"Error: {str(e)}"
+
+TOOLS = {
+    "wikipedia": tool_wikipedia,
+    "calculator": tool_calculator,
+    "web_search": tool_web_search,
+    "code_executor": tool_code_executor,
+    "database": tool_database,
+    "filesystem": tool_filesystem,
+}
+
+def run_tools(question):
+    results = {}
+    # Calculator
+    if any(op in question for op in ['+', '-', '*', '/', '^', 'calculate', 'solve']) and any(c.isdigit() for c in question):
+        expr = re.sub(r'[^\d\+\-\*\/\.\(\)\^]', '', question.replace('^', '**'))
+        if expr:
+            results['calculator'] = tool_calculator(expr)
+    # Wikipedia
+    if any(word in question.lower() for word in ['what is', 'who is', 'explain', 'define', 'history', 'என்ன', 'விளக்கு', 'யார்']):
+        key = question.split()[:4]
+        results['wikipedia'] = tool_wikipedia(' '.join(key))
+    # Web Search
+    if any(word in question.lower() for word in ['tnpsc', 'neet', 'jee', 'exam', 'syllabus', '2024', '2025', '2026', 'latest', 'current']):
+        results['web_search'] = tool_web_search(question)
+    # Code Executor
+    if '```python' in question or 'run this' in question.lower() or 'execute' in question.lower():
+        code = re.findall(r'```python(.*?)```', question, re.DOTALL)
+        if code:
+            results['code_executor'] = tool_code_executor(code[0].strip())
+    # Notes
+    if any(word in question.lower() for word in ['my notes', 'get notes', 'list notes', 'show notes']):
+        results['filesystem'] = tool_filesystem("list")
+    return results
+
+# ─── QUIZ PROMPT ─────────────────────────────────────
 def get_quiz_prompt(language, level):
     level_map = {
         "Beginner": {"tamil": "எளிமையான (5th-7th std level)", "english": "easy (5th-7th grade level)"},
@@ -26,29 +221,110 @@ def get_quiz_prompt(language, level):
     if language == "Tamil":
         return f"""நீ ExamGenie Quiz Master.
 {difficulty['tamil']} கேள்விகள் generate பண்ணு.
-Generate exactly 5 multiple choice questions in TAMIL in this EXACT JSON format:
-{{"questions": [{{"question": "Tamil question", "options": ["A) விடை1", "B) விடை2", "C) விடை3", "D) விடை4"], "answer": "A", "explanation": "Tamil explanation", "topic": "specific topic name"}}]}}
-IMPORTANT: Add a "topic" field for each question — the specific topic it tests.
-Return ONLY the JSON. No extra text."""
+Generate exactly 5 MCQ in TAMIL in JSON:
+{{"questions": [{{"question": "...", "options": ["A)...","B)...","C)...","D)..."], "answer": "A", "explanation": "...", "topic": "..."}}]}}
+Return ONLY JSON."""
     else:
         return f"""You are ExamGenie Quiz Master.
-Generate {difficulty['english']} questions.
-Generate exactly 5 multiple choice questions in ENGLISH in this EXACT JSON format:
-{{"questions": [{{"question": "English question", "options": ["A) opt1", "B) opt2", "C) opt3", "D) opt4"], "answer": "A", "explanation": "English explanation", "topic": "specific topic name"}}]}}
-IMPORTANT: Add a "topic" field for each question — the specific topic it tests.
-Return ONLY the JSON. No extra text."""
+Generate {difficulty['english']} questions in ENGLISH in JSON:
+{{"questions": [{{"question": "...", "options": ["A)...","B)...","C)...","D)..."], "answer": "A", "explanation": "...", "topic": "..."}}]}}
+Return ONLY JSON."""
 
+# ─── ROUTES ──────────────────────────────────────────
 @app.route("/ask", methods=["POST"])
 def ask():
     data = request.get_json()
+    question = data.get("text", "")
+    exam_mode = data.get("exam_mode", False)
+
+    tool_results = run_tools(question)
+
+    context = ""
+    if tool_results.get("calculator"):
+        context += f"\n🧠 Calculator Result:\n{tool_results['calculator']}\n"
+    if tool_results.get("wikipedia"):
+        context += f"\n📚 Wikipedia Info:\n{tool_results['wikipedia']}\n"
+    if tool_results.get("web_search"):
+        context += f"\n🌐 Web Search Results:\n{tool_results['web_search']}\n"
+    if tool_results.get("code_executor"):
+        context += f"\n💻 Code Output:\n{tool_results['code_executor']}\n"
+    if tool_results.get("filesystem"):
+        context += f"\n📂 Files:\n{tool_results['filesystem']}\n"
+
+    if exam_mode and not context:
+        try:
+            search_results = tavily.search(query=question, search_depth="basic", max_results=3)
+            context += "\n🌐 Web Search:\n" + "\n\n".join([r.get("content", "") for r in search_results.get("results", [])])
+        except:
+            pass
+
+# Detect language
+
+    tamil_chars = sum(1 for c in question if '\u0B80' <= c <= '\u0BFF')
+    tamil_words = ['என்ன', 'எப்படி', 'ஏன்', 'யார்', 'எங்கு', 'எது']
+    tanglish_words = ['enna', 'epdi', 'eppadi', 'sollu', 'pannau', 'panna', 'iruku', 
+                  'varuma', 'explain pannau', 'soli', 'kudu', 'theriyuma', 'nalla', 
+                  'romba', 'konjam', 'puraya', 'puriyala', 'sari', 'inga', 'anda',
+                  'ithu', 'athu', 'enga', 'yaru', 'eppov', 'eppo', 'paaru',
+                  'pakka', 'paarunga', 'sollunga', 'pannunga', 'theriyum', 'illa',
+                  'na', 'da', 'bro', 'ma', 'di', 'nga', 'la', 'nu', 'ta']
+    
+    if tamil_chars > 3 or any(w in question.lower() for w in tamil_words):
+        lang_instruction = "RESPOND IN TAMIL ONLY. NO ENGLISH."
+    elif any(w in question.lower() for w in tanglish_words):
+        lang_instruction = "RESPOND IN TANGLISH ONLY (mix of Tamil words written in English + English). Example: 'Photosynthesis nu sollunga, plants sunlight-a use panni food prepare pannunga'. NO PURE TAMIL SCRIPT."
+    else:
+        lang_instruction = "RESPOND IN ENGLISH ONLY. NO TAMIL."
+
+    if context:
+        prompt = f"""Tool Results:
+{context}
+
+Student Question: {question}
+
+{lang_instruction}
+இந்த results வச்சு accurate-ஆ answer சொல்லு."""
+        system = EXAM_PROMPT
+    else:
+        prompt = f"{lang_instruction}\n\n{question}"
+        system = SYSTEM_PROMPT
+        
+    history = data.get("history", [])
+    messages = [{"role": "system", "content": system}]
+    for h in history[:-1]:
+        messages.append({"role": h["role"], "content": h["content"]})
+    messages.append({"role": "user", "content": prompt})
     response = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": data["text"]}
-        ]
+       model="llama-3.3-70b-versatile",
+       messages=messages
     )
     return jsonify({"answer": response.choices[0].message.content})
+
+@app.route("/analyze-file", methods=["POST"])
+def analyze_file():
+    global gemini_key_index
+    data = request.get_json()
+    file_data = data.get("file_data", "")
+    file_type = data.get("file_type", "")
+    question = data.get("question", "இந்த file பத்தி சொல்லு")
+    try:
+        from google import genai
+        from google.genai import types
+        import base64
+        client_g = genai.Client(api_key=gemini_keys[gemini_key_index])
+        prompt = f"""நீ ExamGenie — Tamil students-க்கு help பண்ற AI tutor.
+இந்த file-ஐ analyze பண்ணி Tamil-ல explain பண்ணு.
+Student question: {question}
+Important points, key concepts எல்லாம் சொல்லு."""
+        file_bytes = base64.b64decode(file_data)
+        response = client_g.models.generate_content(
+            model="gemini-2.0-flash-lite",
+            contents=[types.Part.from_bytes(data=file_bytes, mime_type=file_type), prompt]
+        )
+        return jsonify({"answer": response.text})
+    except Exception as e:
+        gemini_key_index = (gemini_key_index + 1) % len(gemini_keys)
+        return jsonify({"error": str(e)}), 500
 
 @app.route("/quiz", methods=["POST"])
 def quiz():
@@ -58,28 +334,21 @@ def quiz():
     language = data.get("language", "Tamil")
     level = data.get("level", "Intermediate")
     weak_topics = data.get("weak_topics", [])
-
     prompt = f"Generate 5 MCQ questions for subject: {subject}"
     if topic:
         prompt += f", specific topic: {topic}"
     elif weak_topics:
-        # Weak topics இருந்தா அதை focus பண்ணு!
-        weak_str = ", ".join(weak_topics[:3])
-        prompt += f". FOCUS on these weak topics the student struggles with: {weak_str}"
-
-    quiz_prompt = get_quiz_prompt(language, level)
+        prompt += f". FOCUS on weak topics: {', '.join(weak_topics[:3])}"
     response = client.chat.completions.create(
         model="llama-3.3-70b-versatile",
         messages=[
-            {"role": "system", "content": quiz_prompt},
+            {"role": "system", "content": get_quiz_prompt(language, level)},
             {"role": "user", "content": prompt}
         ]
     )
     text = response.choices[0].message.content
     try:
-        start = text.find("{")
-        end = text.rfind("}") + 1
-        quiz_data = json.loads(text[start:end])
+        quiz_data = json.loads(text[text.find("{"):text.rfind("}")+1])
         return jsonify(quiz_data)
     except:
         return jsonify({"error": "Quiz generate ஆகல!"}), 500
@@ -89,26 +358,30 @@ def analyze():
     data = request.get_json()
     wrong_topics = data.get("wrong_topics", [])
     subject = data.get("subject", "General")
-
     if not wrong_topics:
         return jsonify({"weak_topics": [], "advice": ""})
-
     prompt = f"""Student got these topics wrong in {subject}: {', '.join(wrong_topics)}.
-Identify the top 3 weak areas and give a short encouraging advice in Tamil (2 sentences max).
-Return JSON: {{"weak_topics": ["topic1", "topic2"], "advice": "Tamil advice here"}}
+Identify top 3 weak areas and give short encouraging advice in Tamil (2 sentences).
+Return JSON: {{"weak_topics": ["topic1", "topic2"], "advice": "Tamil advice"}}
 Return ONLY JSON."""
-
     response = client.chat.completions.create(
         model="llama-3.3-70b-versatile",
         messages=[{"role": "user", "content": prompt}]
     )
     text = response.choices[0].message.content
     try:
-        start = text.find("{")
-        end = text.rfind("}") + 1
-        return jsonify(json.loads(text[start:end]))
+        return jsonify(json.loads(text[text.find("{"):text.rfind("}")+1]))
     except:
         return jsonify({"weak_topics": wrong_topics[:3], "advice": "இந்த topics-ஐ மேலும் படி!"})
+
+@app.route("/search", methods=["POST"])
+def search():
+    data = request.get_json()
+    query = data.get("query", "")
+    try:
+        return jsonify(tavily.search(query=query, search_depth="basic", max_results=3))
+    except:
+        return jsonify({"error": "Search failed"}), 500
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
