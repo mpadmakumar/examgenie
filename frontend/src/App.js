@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from "react";
+import ReactMarkdown from "react-markdown";
 
-const API_URL = window.location.hostname === "localhost" 
-  ? "http://127.0.0.1:8000" 
+const API_URL = window.location.hostname === "localhost"
+  ? "http://127.0.0.1:8000"
   : "https://examgenie-backend-jzyl.onrender.com";
 
 const SUBJECTS = [
@@ -16,6 +17,32 @@ const SUBJECTS = [
 const QUICK = ["Newton's law என்ன?", "Photosynthesis விளக்கு", "Important 10th questions"];
 function generateId() { return Date.now().toString(); }
 function newChat() { return { id: generateId(), title: "New Chat", subject: "General", messages: [], createdAt: new Date().toLocaleTimeString() }; }
+
+const S = { bg: "#0f0f0f", sidebar: "#1a1a1a", border: "#2a2a2a", green: "#4ade80", darkGreen: "#166534" };
+
+// ─── MARKDOWN MESSAGE ────────────────────────────────────────
+function MsgText({ text }) {
+  return (
+    <ReactMarkdown
+      components={{
+        p: ({ children }) => <p style={{ margin: "0 0 8px", lineHeight: "1.7" }}>{children}</p>,
+        strong: ({ children }) => <strong style={{ color: "#4ade80" }}>{children}</strong>,
+        ul: ({ children }) => <ul style={{ margin: "4px 0 8px", paddingLeft: "20px" }}>{children}</ul>,
+        ol: ({ children }) => <ol style={{ margin: "4px 0 8px", paddingLeft: "20px" }}>{children}</ol>,
+        li: ({ children }) => <li style={{ marginBottom: "4px", lineHeight: "1.6" }}>{children}</li>,
+        code: ({ inline, children }) => inline
+          ? <code style={{ background: "#2a2a2a", padding: "2px 6px", borderRadius: "4px", fontSize: "13px", color: "#fbbf24" }}>{children}</code>
+          : <pre style={{ background: "#0f0f0f", border: "1px solid #2a2a2a", borderRadius: "8px", padding: "12px", overflowX: "auto", fontSize: "13px", color: "#e5e7eb" }}><code>{children}</code></pre>,
+        h1: ({ children }) => <h1 style={{ color: "#4ade80", fontSize: "18px", margin: "8px 0 4px" }}>{children}</h1>,
+        h2: ({ children }) => <h2 style={{ color: "#60a5fa", fontSize: "16px", margin: "8px 0 4px" }}>{children}</h2>,
+        h3: ({ children }) => <h3 style={{ color: "#fbbf24", fontSize: "14px", margin: "6px 0 4px" }}>{children}</h3>,
+        blockquote: ({ children }) => <blockquote style={{ borderLeft: "3px solid #4ade80", paddingLeft: "12px", color: "#9ca3af", margin: "8px 0" }}>{children}</blockquote>,
+      }}
+    >
+      {text}
+    </ReactMarkdown>
+  );
+}
 
 // ─── QUIZ ────────────────────────────────────────────────────
 function QuizMode({ subject, onExit, weakTopics, onQuizComplete }) {
@@ -42,10 +69,7 @@ function QuizMode({ subject, onExit, weakTopics, onQuizComplete }) {
     try {
       const res = await fetch(`${API_URL}/quiz`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          subject, topic, language, level,
-          weak_topics: useWeakFocus ? weakTopics : []
-        })
+        body: JSON.stringify({ subject, topic, language, level, weak_topics: useWeakFocus ? weakTopics : [] })
       });
       const data = await res.json();
       if (data.questions) setQuestions(data.questions);
@@ -57,18 +81,13 @@ function QuizMode({ subject, onExit, weakTopics, onQuizComplete }) {
     if (answered) return;
     setSelected(opt); setAnswered(true);
     const q = questions[current];
-    if (opt.charAt(0) === q.answer) {
-      setScore(s => s + 1);
-    } else {
-      // Wrong answer — topic save பண்ணு
-      if (q.topic) setWrongTopics(w => [...w, q.topic]);
-    }
+    if (opt.charAt(0) === q.answer) { setScore(s => s + 1); }
+    else { if (q.topic) setWrongTopics(w => [...w, q.topic]); }
   }
 
   async function next() {
     if (current + 1 >= questions.length) {
       setFinished(true);
-      // Analyze weak topics
       if (wrongTopics.length > 0) {
         setAnalyzing(true);
         try {
@@ -87,20 +106,13 @@ function QuizMode({ subject, onExit, weakTopics, onQuizComplete }) {
     setCurrent(c => c + 1); setSelected(null); setAnswered(false);
   }
 
-  const S = { bg: "#0f0f0f", card: "#1a1a1a", border: "#2a2a2a", green: "#4ade80", darkGreen: "#166534" };
-
-  // START SCREEN
   if (!started) return (
     <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", background: S.bg, padding: "16px", overflowY: "auto" }}>
-      <div style={{ background: S.card, border: `1px solid ${S.border}`, borderRadius: "20px", padding: "20px", width: "100%", maxWidth: "520px" }}>
+      <div style={{ background: S.sidebar, border: `1px solid ${S.border}`, borderRadius: "20px", padding: "20px", width: "100%", maxWidth: "520px" }}>
         <div style={{ textAlign: "center", marginBottom: "16px" }}>
           <span style={{ fontSize: "32px" }}>🏆</span>
-          
           <h2 style={{ color: S.green, margin: "4px 0 0", fontSize: "1.2rem" }}>Quiz Mode</h2>
-          
         </div>
-
-        {/* Weak Focus Banner */}
         {weakTopics.length > 0 && (
           <div style={{ background: "#3b1f00", border: "1px solid #f59e0b", borderRadius: "12px", padding: "12px", marginBottom: "14px" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -115,7 +127,6 @@ function QuizMode({ subject, onExit, weakTopics, onQuizComplete }) {
             </div>
           </div>
         )}
-
         <div style={{ display: "flex", gap: "10px", marginBottom: "14px" }}>
           <div style={{ flex: 1 }}>
             <p style={{ color: "#9ca3af", fontSize: "10px", fontWeight: "bold", marginBottom: "6px", textTransform: "uppercase" }}>📚 Subject</p>
@@ -124,10 +135,9 @@ function QuizMode({ subject, onExit, weakTopics, onQuizComplete }) {
           <div style={{ flex: 1 }}>
             <p style={{ color: "#9ca3af", fontSize: "10px", fontWeight: "bold", marginBottom: "6px", textTransform: "uppercase" }}>🎯 Topic</p>
             <input value={topic} onChange={e => setTopic(e.target.value)} onKeyDown={e => e.key === "Enter" && loadQuiz()}
-              placeholder="Optional..." style={{ width: "100%", background: "#2a2a2a", border: `1px solid ${S.border}`, borderRadius: "8px", padding: "10px 12px", color: "white", fontSize: "14px", outline: "none" }} />
+              placeholder="Optional..." style={{ width: "100%", background: "#2a2a2a", border: `1px solid ${S.border}`, borderRadius: "8px", padding: "10px 12px", color: "white", fontSize: "14px", outline: "none", boxSizing: "border-box" }} />
           </div>
         </div>
-
         <div style={{ marginBottom: "14px" }}>
           <p style={{ color: "#9ca3af", fontSize: "10px", fontWeight: "bold", marginBottom: "6px" }}>⚡ Quick Topics:</p>
           <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
@@ -137,7 +147,6 @@ function QuizMode({ subject, onExit, weakTopics, onQuizComplete }) {
             ))}
           </div>
         </div>
-
         <div style={{ display: "flex", gap: "10px", marginBottom: "16px" }}>
           <div style={{ flex: 1 }}>
             <p style={{ color: "#9ca3af", fontSize: "10px", fontWeight: "bold", marginBottom: "6px", textTransform: "uppercase" }}>🌐 Language</p>
@@ -164,8 +173,7 @@ function QuizMode({ subject, onExit, weakTopics, onQuizComplete }) {
             </div>
           </div>
         </div>
-
-        <button onClick={loadQuiz} style={{ width: "100%", background: "linear-gradient(135deg, #166534, #15803d)", border: "none", borderRadius: "12px", padding: "14px", color: "white", fontWeight: "bold", fontSize: "16px", cursor: "pointer", marginBottom: "8px", boxShadow: "0 4px 15px rgba(22,101,52,0.4)" }}>
+        <button onClick={loadQuiz} style={{ width: "100%", background: "linear-gradient(135deg, #166534, #15803d)", border: "none", borderRadius: "12px", padding: "14px", color: "white", fontWeight: "bold", fontSize: "16px", cursor: "pointer", marginBottom: "8px" }}>
           🚀 Quiz Start பண்ணு!
         </button>
         <button onClick={onExit} style={{ width: "100%", background: "none", border: `1px solid ${S.border}`, borderRadius: "10px", padding: "10px", color: "#9ca3af", fontSize: "13px", cursor: "pointer" }}>
@@ -175,38 +183,32 @@ function QuizMode({ subject, onExit, weakTopics, onQuizComplete }) {
     </div>
   );
 
-  // LOADING
   if (loading) return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: S.bg, color: "white" }}>
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: S.bg }}>
       <p style={{ fontSize: "48px" }}>⏳</p>
-      <p style={{ color: S.green, fontSize: "18px", fontWeight: "bold" }}>{useWeakFocus ? "🎯 Weak topics focus quiz..." : `${topic || subject} Quiz தயாராகுது...`}</p>
-      <p style={{ color: "#6b7280" }}>Groq AI questions generate பண்றது</p>
+      <p style={{ color: S.green, fontSize: "18px", fontWeight: "bold" }}>Quiz தயாராகுது...</p>
     </div>
   );
 
-  // RESULT SCREEN
   if (finished) {
     const percent = Math.round((score / questions.length) * 100);
     const emoji = score === questions.length ? "🏆" : score >= 3 ? "🎉" : "💪";
     const msg = score === questions.length ? "Perfect Score!" : score >= 3 ? "நல்லா பண்ணினே!" : "மேலும் படி!";
     const barColor = score === questions.length ? "#4ade80" : score >= 3 ? "#fbbf24" : "#f87171";
-
     return (
       <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", background: S.bg, padding: "20px", overflowY: "auto" }}>
-        <div style={{ background: S.card, border: `1px solid ${S.border}`, borderRadius: "24px", padding: "28px", width: "100%", maxWidth: "480px", textAlign: "center" }}>
+        <div style={{ background: S.sidebar, border: `1px solid ${S.border}`, borderRadius: "24px", padding: "28px", width: "100%", maxWidth: "480px", textAlign: "center" }}>
           <div style={{ fontSize: "56px" }}>{emoji}</div>
-          <h2 style={{ color: S.green, margin: "4px 0", fontSize: "1.4rem" }}>Quiz முடிஞ்சது!</h2>
+          <h2 style={{ color: S.green, margin: "4px 0" }}>Quiz முடிஞ்சது!</h2>
           <p style={{ color: "#6b7280", margin: "0 0 20px", fontSize: "12px" }}>{topic || subject} • {language} • {level}</p>
-
           <div style={{ background: "#0f0f0f", borderRadius: "16px", padding: "20px", marginBottom: "16px" }}>
             <div style={{ fontSize: "48px", fontWeight: 900, color: barColor }}>{score}/{questions.length}</div>
             <div style={{ color: "#9ca3af", fontSize: "13px", marginBottom: "10px" }}>{percent}% correct</div>
             <div style={{ background: "#2a2a2a", borderRadius: "999px", height: "8px" }}>
-              <div style={{ width: `${percent}%`, background: barColor, height: "8px", borderRadius: "999px", transition: "width 1s ease" }} />
+              <div style={{ width: `${percent}%`, background: barColor, height: "8px", borderRadius: "999px" }} />
             </div>
             <p style={{ color: barColor, fontWeight: "bold", marginTop: "10px", fontSize: "14px" }}>{msg}</p>
           </div>
-
           <div style={{ display: "flex", gap: "8px", marginBottom: "16px" }}>
             <div style={{ flex: 1, background: "#14532d", borderRadius: "12px", padding: "12px" }}>
               <div style={{ fontSize: "22px", fontWeight: 900, color: "#4ade80" }}>{score}</div>
@@ -221,13 +223,7 @@ function QuizMode({ subject, onExit, weakTopics, onQuizComplete }) {
               <div style={{ fontSize: "11px", color: "#93c5fd" }}>📝 Total</div>
             </div>
           </div>
-
-          {/* AI Analysis */}
-          {analyzing && (
-            <div style={{ background: "#1a1a2e", border: "1px solid #3b3b6b", borderRadius: "12px", padding: "12px", marginBottom: "16px" }}>
-              <p style={{ color: "#818cf8", margin: 0, fontSize: "13px" }}>🤖 AI உன் weak topics analyze பண்றது...</p>
-            </div>
-          )}
+          {analyzing && <div style={{ background: "#1a1a2e", border: "1px solid #3b3b6b", borderRadius: "12px", padding: "12px", marginBottom: "16px" }}><p style={{ color: "#818cf8", margin: 0, fontSize: "13px" }}>🤖 AI analyze பண்றது...</p></div>}
           {analysis && (
             <div style={{ background: "#1a1a2e", border: "1px solid #818cf8", borderRadius: "12px", padding: "16px", marginBottom: "16px", textAlign: "left" }}>
               <p style={{ color: "#818cf8", fontWeight: "bold", margin: "0 0 8px", fontSize: "13px" }}>🤖 AI Analysis:</p>
@@ -235,18 +231,15 @@ function QuizMode({ subject, onExit, weakTopics, onQuizComplete }) {
                 <div style={{ marginBottom: "8px" }}>
                   <p style={{ color: "#f87171", fontSize: "12px", margin: "0 0 4px" }}>⚠️ Weak Topics:</p>
                   <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
-                    {analysis.weak_topics.map(t => (
-                      <span key={t} style={{ background: "#450a0a", color: "#f87171", padding: "2px 8px", borderRadius: "6px", fontSize: "11px" }}>{t}</span>
-                    ))}
+                    {analysis.weak_topics.map(t => <span key={t} style={{ background: "#450a0a", color: "#f87171", padding: "2px 8px", borderRadius: "6px", fontSize: "11px" }}>{t}</span>)}
                   </div>
                 </div>
               )}
               {analysis.advice && <p style={{ color: "#d1d5db", fontSize: "13px", margin: 0, lineHeight: "1.5" }}>{analysis.advice}</p>}
             </div>
           )}
-
           <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-            <button onClick={loadQuiz} style={{ width: "100%", background: "linear-gradient(135deg, #166534, #15803d)", border: "none", borderRadius: "12px", padding: "12px", color: "white", fontWeight: "bold", fontSize: "14px", cursor: "pointer", boxShadow: "0 4px 12px rgba(22,101,52,0.3)" }}>↺ Same Topic Again</button>
+            <button onClick={loadQuiz} style={{ width: "100%", background: "linear-gradient(135deg, #166534, #15803d)", border: "none", borderRadius: "12px", padding: "12px", color: "white", fontWeight: "bold", fontSize: "14px", cursor: "pointer" }}>↺ Same Topic Again</button>
             <button onClick={() => { setStarted(false); setFinished(false); }} style={{ width: "100%", background: "#2a2a2a", border: `1px solid ${S.border}`, borderRadius: "12px", padding: "10px", color: "white", fontWeight: "bold", fontSize: "13px", cursor: "pointer" }}>🎯 New Topic</button>
             <button onClick={onExit} style={{ width: "100%", background: "none", border: `1px solid ${S.border}`, borderRadius: "12px", padding: "10px", color: "#9ca3af", fontSize: "13px", cursor: "pointer" }}>💬 Chat-க்கு போ</button>
           </div>
@@ -276,19 +269,10 @@ function QuizMode({ subject, onExit, weakTopics, onQuizComplete }) {
         <span style={{ color: S.green, fontWeight: "bold", fontSize: "14px" }}>{current + 1}/{questions.length}</span>
         <span style={{ background: "#14532d", color: S.green, padding: "4px 10px", borderRadius: "8px", fontSize: "13px", fontWeight: "bold" }}>🏆 {score}</span>
       </div>
-
-      <div style={{ textAlign: "center", marginBottom: "16px" }}>
-        <span style={{ background: "#1e3a5f", color: "#60a5fa", padding: "4px 16px", borderRadius: "999px", fontSize: "12px", fontWeight: "bold" }}>
-          📚 {topic || subject} • {language} • {level}
-          {useWeakFocus && <span style={{ color: "#fbbf24", marginLeft: "8px" }}>🎯 Weak Focus</span>}
-        </span>
-      </div>
-
-      <div style={{ background: "#1a1a1a", border: "1px solid #2a2a2a", borderRadius: "16px", padding: "24px", marginBottom: "16px", maxWidth: "700px", width: "100%", alignSelf: "center" }}>
+      <div style={{ background: S.sidebar, border: `1px solid ${S.border}`, borderRadius: "16px", padding: "24px", marginBottom: "16px", maxWidth: "700px", width: "100%", alignSelf: "center" }}>
         <p style={{ color: "#9ca3af", fontSize: "12px", marginBottom: "8px" }}>Question {current + 1} {q.topic && <span style={{ color: "#818cf8" }}>• {q.topic}</span>}</p>
         <p style={{ fontSize: "18px", lineHeight: "1.6", margin: 0, fontWeight: "600" }}>{q.question}</p>
       </div>
-
       <div style={{ display: "flex", flexDirection: "column", gap: "10px", maxWidth: "700px", width: "100%", alignSelf: "center" }}>
         {q.options.map((opt, i) => {
           const isCorrect = opt.charAt(0) === q.answer;
@@ -300,7 +284,7 @@ function QuizMode({ subject, onExit, weakTopics, onQuizComplete }) {
           }
           return (
             <button key={i} onClick={() => handleAnswer(opt)}
-              style={{ background: bg, border: `2px solid ${border}`, borderRadius: "12px", padding: "14px 18px", color, textAlign: "left", cursor: answered ? "default" : "pointer", fontSize: "15px", transition: "all 0.2s", boxShadow: answered && isCorrect ? "0 0 12px rgba(74,222,128,0.3)" : "none" }}>
+              style={{ background: bg, border: `2px solid ${border}`, borderRadius: "12px", padding: "14px 18px", color, textAlign: "left", cursor: answered ? "default" : "pointer", fontSize: "15px", transition: "all 0.2s" }}>
               {opt}
               {answered && isCorrect && <span style={{ float: "right" }}>✅</span>}
               {answered && isSelected && !isCorrect && <span style={{ float: "right" }}>❌</span>}
@@ -308,14 +292,13 @@ function QuizMode({ subject, onExit, weakTopics, onQuizComplete }) {
           );
         })}
       </div>
-
       {answered && (
         <div style={{ maxWidth: "700px", width: "100%", alignSelf: "center", marginTop: "16px" }}>
           <div style={{ background: "#1a2e1a", border: "1px solid #166534", borderRadius: "12px", padding: "16px", marginBottom: "12px" }}>
             <p style={{ color: S.green, fontWeight: "bold", margin: "0 0 4px" }}>💡 Explanation:</p>
             <p style={{ color: "#d1d5db", margin: 0, lineHeight: "1.6" }}>{q.explanation}</p>
           </div>
-          <button onClick={next} style={{ width: "100%", background: "linear-gradient(135deg, #166534, #15803d)", color: "white", border: "none", borderRadius: "12px", padding: "14px", fontWeight: "bold", fontSize: "16px", cursor: "pointer", boxShadow: "0 4px 15px rgba(22,101,52,0.3)" }}>
+          <button onClick={next} style={{ width: "100%", background: "linear-gradient(135deg, #166534, #15803d)", color: "white", border: "none", borderRadius: "12px", padding: "14px", fontWeight: "bold", fontSize: "16px", cursor: "pointer" }}>
             {current + 1 >= questions.length ? "🏆 Result பாரு" : "அடுத்த Question →"}
           </button>
         </div>
@@ -347,83 +330,107 @@ export default function App() {
   const [speaking, setSpeaking] = useState(false);
   const [uploadedFile, setUploadedFile] = useState(null);
   const [filePreview, setFilePreview] = useState(null);
+  const [dailyChallenge, setDailyChallenge] = useState(null);
+  const [challengeSelected, setChallengeSelected] = useState(null);
+  const [challengeAnswered, setChallengeAnswered] = useState(false);
+  const [showChallenge, setShowChallenge] = useState(false);
+  const [showExamInfo, setShowExamInfo] = useState(false);
+  const [examInfoData, setExamInfoData] = useState(null);
+  const [selectedExam, setSelectedExam] = useState("TNPSC");
+  const [examInfoType, setExamInfoType] = useState("syllabus");
+  const [examInfoLoading, setExamInfoLoading] = useState(false);
   const fileRef = useRef(null);
   const bottomRef = useRef(null);
+  const isMobile = window.innerWidth <= 768;
 
-  // Voice Input
-function startVoice() {
-  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SpeechRecognition) { alert("உன் browser voice support பண்றதில்ல!"); return; }
-  const recognition = new SpeechRecognition();
-  recognition.lang = "ta-IN";
-  recognition.interimResults = false;
-  recognition.onstart = () => setListening(true);
-  recognition.onend = () => setListening(false);
-  recognition.onresult = (e) => {
-    const text = e.results[0][0].transcript;
-    setInput(text);
-  };
-  recognition.onerror = () => setListening(false);
-  recognition.start();
-}
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth > 768) setSidebarOpen(true);
+      else setSidebarOpen(false);
+    };
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
-// Voice Output
-function speak(text) {
-  if (!window.speechSynthesis) return;
-  window.speechSynthesis.cancel();
-  const utterance = new SpeechSynthesisUtterance(text);
-  const voices = window.speechSynthesis.getVoices();
-  // English India voice use பண்ணு
-  const indiaVoice = voices.find(v => v.name.includes("Ravi") || v.name.includes("Heera"));
-  if (indiaVoice) utterance.voice = indiaVoice;
-  utterance.lang = "en-IN";
-  utterance.rate = 0.9;
-  utterance.onstart = () => setSpeaking(true);
-  utterance.onend = () => setSpeaking(false);
-  window.speechSynthesis.speak(utterance);
-}
-function stopSpeak() {
-  window.speechSynthesis.cancel();
-  setSpeaking(false);
-}
-function handleFile(e) {
-  const file = e.target.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = () => {
-    const base64 = reader.result.split(",")[1];
-    setUploadedFile({ base64, type: file.type, name: file.name });
-    if (file.type.startsWith("image")) {
-      setFilePreview(reader.result);
-    } else {
-      setFilePreview("pdf");
-    }
-  };
-  reader.readAsDataURL(file);
-}
-
-async function sendWithFile() {
-  if (!uploadedFile || loading) return;
-  const question = input || "இந்த file பத்தி விளக்கு";
-  const msgs = [...activeChat.messages, { role: "user", text: question, file: filePreview, fileName: uploadedFile.name }];
-  const title = activeChat.title === "New Chat" ? question.slice(0, 28) + "..." : activeChat.title;
-  updateChat(activeChat.id, { messages: msgs, title });
-  setInput(""); setLoading(true); setUploadedFile(null); setFilePreview(null);
-  try {
-    const res = await fetch(`${API_URL}/analyze-file`, {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ file_data: uploadedFile.base64, file_type: uploadedFile.type, question })
-    });
-    const data = await res.json();
-    updateChat(activeChat.id, { messages: [...msgs, { role: "ai", text: data.answer || data.error }] });
-  } catch {
-    updateChat(activeChat.id, { messages: [...msgs, { role: "ai", text: "❌ File analyze ஆகல!" }] });
+  function startVoice() {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) { alert("உன் browser voice support பண்றதில்ல!"); return; }
+    const r = new SR();
+    r.lang = "ta-IN"; r.interimResults = false;
+    r.onstart = () => setListening(true);
+    r.onend = () => setListening(false);
+    r.onresult = (e) => setInput(e.results[0][0].transcript);
+    r.onerror = () => setListening(false);
+    r.start();
   }
-  setLoading(false);
-}
+
+  function speak(text) {
+    if (!window.speechSynthesis) return;
+    window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    const voices = window.speechSynthesis.getVoices();
+    const v = voices.find(v => v.name.includes("Ravi") || v.name.includes("Heera"));
+    if (v) u.voice = v;
+    u.lang = "en-IN"; u.rate = 0.9;
+    u.onstart = () => setSpeaking(true);
+    u.onend = () => setSpeaking(false);
+    window.speechSynthesis.speak(u);
+  }
+
+  function stopSpeak() { window.speechSynthesis.cancel(); setSpeaking(false); }
+
+  async function loadDailyChallenge() {
+    try {
+      const res = await fetch(`${API_URL}/daily-challenge`);
+      const data = await res.json();
+      setDailyChallenge(data); setChallengeSelected(null); setChallengeAnswered(false);
+    } catch { }
+  }
+
+  async function loadExamInfo(exam, type) {
+    setExamInfoLoading(true); setExamInfoData(null);
+    try {
+      const res = await fetch(`${API_URL}/exam-info`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ exam, type })
+      });
+      setExamInfoData(await res.json());
+    } catch { }
+    setExamInfoLoading(false);
+  }
+
+  function handleFile(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64 = reader.result.split(",")[1];
+      setUploadedFile({ base64, type: file.type, name: file.name });
+      setFilePreview(file.type.startsWith("image") ? reader.result : "pdf");
+    };
+    reader.readAsDataURL(file);
+  }
+
+  async function sendWithFile() {
+    if (!uploadedFile || loading) return;
+    const question = input || "இந்த file பத்தி விளக்கு";
+    const msgs = [...activeChat.messages, { role: "user", text: question, file: filePreview, fileName: uploadedFile.name }];
+    updateChat(activeChat.id, { messages: msgs, title: activeChat.title === "New Chat" ? question.slice(0, 28) + "..." : activeChat.title });
+    setInput(""); setLoading(true); setUploadedFile(null); setFilePreview(null);
+    try {
+      const res = await fetch(`${API_URL}/analyze-file`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ file_data: uploadedFile.base64, file_type: uploadedFile.type, question })
+      });
+      const data = await res.json();
+      updateChat(activeChat.id, { messages: [...msgs, { role: "ai", text: data.answer || data.error }] });
+    } catch {
+      updateChat(activeChat.id, { messages: [...msgs, { role: "ai", text: "❌ File analyze ஆகல!" }] });
+    }
+    setLoading(false);
+  }
 
   const activeChat = chats.find(c => c.id === activeChatId) || chats[0];
-  const S = { bg: "#0f0f0f", sidebar: "#1a1a1a", border: "#2a2a2a", green: "#4ade80", darkGreen: "#166534" };
 
   useEffect(() => {
     localStorage.setItem("examgenie_chats", JSON.stringify(chats));
@@ -435,19 +442,19 @@ async function sendWithFile() {
   }, [weakTopics]);
 
   function updateChat(id, updates) { setChats(cs => cs.map(c => c.id === id ? { ...c, ...updates } : c)); }
-  function addNewChat() { const c = newChat(); setChats(cs => [c, ...cs]); setActiveChatId(c.id); setInput(""); setQuizMode(false); }
+  function addNewChat() {
+    const c = newChat(); setChats(cs => [c, ...cs]); setActiveChatId(c.id);
+    setInput(""); setQuizMode(false); setShowChallenge(false); setShowExamInfo(false);
+    if (isMobile) setSidebarOpen(false);
+  }
   function deleteChat(id) {
     const r = chats.filter(c => c.id !== id);
     if (!r.length) { const c = newChat(); setChats([c]); setActiveChatId(c.id); }
     else { setChats(r); if (activeChatId === id) setActiveChatId(r[0].id); }
   }
   function setSubject(val) { updateChat(activeChat.id, { subject: val }); }
-
   function handleQuizComplete(newWeakTopics) {
-    setWeakTopics(prev => {
-      const combined = [...new Set([...prev, ...newWeakTopics])].slice(0, 10);
-      return combined;
-    });
+    setWeakTopics(prev => [...new Set([...prev, ...newWeakTopics])].slice(0, 10));
   }
 
   async function send(customText) {
@@ -457,14 +464,36 @@ async function sendWithFile() {
     const title = activeChat.title === "New Chat" ? question.slice(0, 28) + "..." : activeChat.title;
     updateChat(activeChat.id, { messages: msgs, title });
     setInput(""); setLoading(true);
+    if (isMobile) setSidebarOpen(false);
     try {
-      const res = await fetch(`${API_URL}/ask`, { method: "POST", headers: { "Content-Type": "application/json" },
-         body: JSON.stringify({text: `[Subject: ${activeChat.subject}] ${question}`,
-                               exam_mode: examMode,history: activeChat.messages.slice(-6).map(m => ({
-                                 role: m.role === "user" ? "user" : "assistant",content: m.text}))
-                              }) });
-      const data = await res.json();
-      updateChat(activeChat.id, { messages: [...msgs, { role: "ai", text: data.answer }] });
+      const res = await fetch(`${API_URL}/ask`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text: `[Subject: ${activeChat.subject}] ${question}`,
+          exam_mode: examMode,
+          history: activeChat.messages.slice(-6).map(m => ({
+            role: m.role === "user" ? "user" : "assistant",
+            content: m.text
+          }))
+        })
+      });
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let fullText = "";
+      updateChat(activeChat.id, { messages: [...msgs, { role: "ai", text: "" }] });
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const lines = decoder.decode(value).split("\n");
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            const data = line.slice(6);
+            if (data === "[DONE]") break;
+            fullText += data;
+            updateChat(activeChat.id, { messages: [...msgs, { role: "ai", text: fullText }] });
+          }
+        }
+      }
     } catch {
       updateChat(activeChat.id, { messages: [...msgs, { role: "ai", text: "❌ Server connect ஆகல!" }] });
     }
@@ -472,102 +501,241 @@ async function sendWithFile() {
   }
 
   return (
-    <div style={{ display: "flex", height: "100vh", fontFamily: "'Segoe UI', Arial, sans-serif", background: S.bg, color: "white" }}>
+    <div style={{ display: "flex", height: "100vh", fontFamily: "'Segoe UI', Arial, sans-serif", background: S.bg, color: "white", overflow: "hidden" }}>
 
-      {/* SIDEBAR */}
-      {sidebarOpen && (
-        <div style={{ width: "260px", minWidth: "260px", background: S.sidebar, borderRight: `1px solid ${S.border}`, display: "flex", flexDirection: "column" }}>
-
-          <div style={{ padding: "20px 16px 12px", borderBottom: `1px solid ${S.border}` }}>
-            <div style={{ fontSize: "28px" }}>🎓</div>
-            <h1 style={{ margin: "4px 0 0", fontSize: "1.3rem", fontWeight: 900 }}>Exam<span style={{ color: S.green }}>Genie</span></h1>
-            <p style={{ margin: "2px 0 0", fontSize: "10px", color: "#6b7280" }}>Tamil AI Tutor • Free</p>
-          </div>
-
-          <div style={{ padding: "12px" }}>
-            <button onClick={addNewChat} style={{ width: "100%", padding: "10px", borderRadius: "10px", border: "1px dashed #3f3f3f", background: "transparent", color: S.green, fontWeight: "bold", fontSize: "14px", cursor: "pointer" }}>➕ New Chat</button>
-          </div>
-
-          <div style={{ flex: 1, overflowY: "auto", padding: "0 12px" }}>
-            <p style={{ fontSize: "10px", color: "#6b7280", fontWeight: "bold", marginBottom: "6px", textTransform: "uppercase", letterSpacing: "1px" }}>Recent Chats</p>
-            {chats.map(chat => (
-              <div key={chat.id} onClick={() => { setActiveChatId(chat.id); setQuizMode(false); }}
-                style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px", borderRadius: "10px", marginBottom: "4px", cursor: "pointer", background: chat.id === activeChatId ? S.darkGreen : "transparent" }}>
-                <div style={{ overflow: "hidden" }}>
-                  <p style={{ margin: 0, fontSize: "13px", fontWeight: chat.id === activeChatId ? "bold" : "normal", color: chat.id === activeChatId ? "white" : "#d1d5db", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "160px" }}>💬 {chat.title}</p>
-                  <p style={{ margin: 0, fontSize: "10px", color: chat.id === activeChatId ? "#86efac" : "#6b7280" }}>{chat.subject} • {chat.createdAt}</p>
-                </div>
-                <button onClick={e => { e.stopPropagation(); deleteChat(chat.id); }} style={{ background: "none", border: "none", color: "#ef4444", cursor: "pointer", fontSize: "14px", opacity: 0.6 }}>🗑️</button>
-              </div>
-            ))}
-          </div>
-
-          {/* Weak Topics Section */}
-          {weakTopics.length > 0 && (
-            <div style={{ padding: "12px", borderTop: `1px solid ${S.border}` }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px" }}>
-                <p style={{ fontSize: "10px", color: "#f87171", fontWeight: "bold", textTransform: "uppercase", letterSpacing: "1px", margin: 0 }}>⚠️ Weak Topics</p>
-                <button onClick={() => setWeakTopics([])} style={{ background: "none", border: "none", color: "#6b7280", fontSize: "10px", cursor: "pointer" }}>clear</button>
-              </div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
-                {weakTopics.slice(0, 6).map(t => (
-                  <span key={t} style={{ background: "#450a0a", color: "#f87171", padding: "3px 8px", borderRadius: "6px", fontSize: "10px", fontWeight: "bold" }}>{t}</span>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <div style={{ padding: "12px", borderTop: `1px solid ${S.border}` }}>
-            <p style={{ fontSize: "10px", color: "#6b7280", fontWeight: "bold", marginBottom: "8px", textTransform: "uppercase", letterSpacing: "1px" }}>📚 Subject</p>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
-              {SUBJECTS.map(s => (
-                <button key={s.value} onClick={() => setSubject(s.value)}
-                  style={{ padding: "6px 10px", borderRadius: "8px", border: `1px solid ${activeChat?.subject === s.value ? S.green : S.border}`, cursor: "pointer", fontSize: "11px", fontWeight: "bold", background: activeChat?.subject === s.value ? S.darkGreen : "#2a2a2a", color: activeChat?.subject === s.value ? "white" : "#9ca3af", transition: "all 0.2s" }}>
-                  {s.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div style={{ padding: "12px", borderTop: `1px solid ${S.border}` }}>
-            <div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
-              <span style={{ background: "#14532d", color: S.green, padding: "4px 10px", borderRadius: "8px", fontSize: "11px", fontWeight: "bold" }}>⚡ Powered by Groq</span>
-              <span style={{ background: "#1e3a5f", color: "#60a5fa", padding: "4px 10px", borderRadius: "8px", fontSize: "11px", fontWeight: "bold" }}>🆓 100% Free Forever</span>
-              <span style={{ background: "#3b1f00", color: "#fbbf24", padding: "4px 10px", borderRadius: "8px", fontSize: "11px", fontWeight: "bold" }}>🌐 Open Source</span>
-            </div>
-          </div>
-        </div>
+      {/* OVERLAY for mobile */}
+      {isMobile && sidebarOpen && (
+        <div onClick={() => setSidebarOpen(false)}
+          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 10 }} />
       )}
 
-      {/* MAIN */}
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
-        <div style={{ padding: "14px 20px", borderBottom: `1px solid ${S.border}`, display: "flex", alignItems: "center", gap: "12px", background: S.sidebar }}>
-          <button onClick={() => setSidebarOpen(o => !o)} style={{ background: "none", border: "none", color: "#9ca3af", fontSize: "20px", cursor: "pointer" }}>☰</button>
-          <div>
-            <span style={{ fontWeight: "bold", fontSize: "15px" }}>🧞 Genie</span>
-            <span style={{ fontSize: "11px", color: S.green, marginLeft: "8px" }}>● Online • {activeChat?.subject}</span>
-          </div>
-          {weakTopics.length > 0 && (
-            <div style={{ background: "#3b1f00", border: "1px solid #f59e0b", borderRadius: "8px", padding: "4px 10px", fontSize: "11px", color: "#fbbf24", fontWeight: "bold" }}>
-              ⚠️ {weakTopics.length} weak topics
-            </div>
-          )}
-          <button onClick={() => setExamMode(e => !e)}
-  style={{ background: examMode ? "#1e3a5f" : "#2a2a2a", border: `1px solid ${examMode ? "#60a5fa" : S.border}`, color: examMode ? "#60a5fa" : "#9ca3af", borderRadius: "10px", padding: "8px 16px", fontWeight: "bold", fontSize: "13px", cursor: "pointer" }}>
-  {examMode ? "🎓 Exam Mode ON" : "🎓 Exam Mode"}
-</button>
-          <button onClick={() => setQuizMode(q => !q)}
-            style={{ marginLeft: "auto", background: quizMode ? S.darkGreen : "#2a2a2a", border: `1px solid ${quizMode ? S.green : S.border}`, color: quizMode ? "white" : S.green, borderRadius: "10px", padding: "8px 16px", fontWeight: "bold", fontSize: "13px", cursor: "pointer" }}>
-            {quizMode ? "💬 Chat Mode" : "🏆 Quiz Mode"}
+      {/* SIDEBAR */}
+      <div style={{
+  width: sidebarOpen ? "260px" : "0px",
+  minWidth: sidebarOpen ? "260px" : "0px",
+  background: S.sidebar,
+  borderRight: sidebarOpen ? `1px solid ${S.border}` : "none",
+  display: "flex",
+  flexDirection: "column",
+  position: isMobile ? "fixed" : "relative",
+  top: 0, left: 0, height: "100vh",
+  transform: isMobile ? (sidebarOpen ? "translateX(0)" : "translateX(-100%)") : "translateX(0)",
+  transition: "all 0.3s ease",
+  overflow: "hidden",
+  zIndex: 20
+}}>
+        <div style={{ padding: "20px 16px 12px", borderBottom: `1px solid ${S.border}` }}>
+          <div style={{ fontSize: "28px" }}>🎓</div>
+          <h1 style={{ margin: "4px 0 0", fontSize: "1.3rem", fontWeight: 900 }}>Exam<span style={{ color: S.green }}>Genie</span></h1>
+          <p style={{ margin: "2px 0 0", fontSize: "10px", color: "#6b7280" }}>Tamil AI Tutor • Free</p>
+        </div>
+
+        <div style={{ padding: "12px" }}>
+          <button onClick={addNewChat} style={{ width: "100%", padding: "10px", borderRadius: "10px", border: "1px dashed #3f3f3f", background: "transparent", color: S.green, fontWeight: "bold", fontSize: "14px", cursor: "pointer" }}>➕ New Chat</button>
+          <button onClick={() => { loadDailyChallenge(); setShowChallenge(true); setShowExamInfo(false); setQuizMode(false); if (isMobile) setSidebarOpen(false); }}
+            style={{ width: "100%", padding: "10px", borderRadius: "10px", border: "1px solid #f59e0b", background: showChallenge ? "#3b1f00" : "transparent", color: "#fbbf24", fontWeight: "bold", fontSize: "13px", cursor: "pointer", marginTop: "6px" }}>
+            🏆 Daily Challenge
+          </button>
+          <button onClick={() => { setShowExamInfo(true); setShowChallenge(false); setQuizMode(false); loadExamInfo(selectedExam, examInfoType); if (isMobile) setSidebarOpen(false); }}
+            style={{ width: "100%", padding: "10px", borderRadius: "10px", border: "1px solid #3b82f6", background: showExamInfo ? "#1e3a5f" : "transparent", color: "#60a5fa", fontWeight: "bold", fontSize: "13px", cursor: "pointer", marginTop: "6px" }}>
+            📚 Exam Prep
           </button>
         </div>
 
-        {quizMode
-          ? <QuizMode subject={activeChat?.subject || "General"} onExit={() => setQuizMode(false)} weakTopics={weakTopics} onQuizComplete={handleQuizComplete} />
-          : <>
+        <div style={{ flex: 1, overflowY: "auto", padding: "0 12px" }}>
+          <p style={{ fontSize: "10px", color: "#6b7280", fontWeight: "bold", marginBottom: "6px", textTransform: "uppercase", letterSpacing: "1px" }}>Recent Chats</p>
+          {chats.map(chat => (
+            <div key={chat.id} onClick={() => { setActiveChatId(chat.id); setQuizMode(false); setShowChallenge(false); setShowExamInfo(false); if (isMobile) setSidebarOpen(false); }}
+              style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px", borderRadius: "10px", marginBottom: "4px", cursor: "pointer", background: chat.id === activeChatId ? S.darkGreen : "transparent" }}>
+              <div style={{ overflow: "hidden" }}>
+                <p style={{ margin: 0, fontSize: "13px", fontWeight: chat.id === activeChatId ? "bold" : "normal", color: chat.id === activeChatId ? "white" : "#d1d5db", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "160px" }}>💬 {chat.title}</p>
+                <p style={{ margin: 0, fontSize: "10px", color: chat.id === activeChatId ? "#86efac" : "#6b7280" }}>{chat.subject} • {chat.createdAt}</p>
+              </div>
+              <button onClick={e => { e.stopPropagation(); deleteChat(chat.id); }} style={{ background: "none", border: "none", color: "#ef4444", cursor: "pointer", fontSize: "14px", opacity: 0.6 }}>🗑️</button>
+            </div>
+          ))}
+        </div>
+
+        {weakTopics.length > 0 && (
+          <div style={{ padding: "12px", borderTop: `1px solid ${S.border}` }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px" }}>
+              <p style={{ fontSize: "10px", color: "#f87171", fontWeight: "bold", textTransform: "uppercase", letterSpacing: "1px", margin: 0 }}>⚠️ Weak Topics</p>
+              <button onClick={() => setWeakTopics([])} style={{ background: "none", border: "none", color: "#6b7280", fontSize: "10px", cursor: "pointer" }}>clear</button>
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
+              {weakTopics.slice(0, 6).map(t => <span key={t} style={{ background: "#450a0a", color: "#f87171", padding: "3px 8px", borderRadius: "6px", fontSize: "10px", fontWeight: "bold" }}>{t}</span>)}
+            </div>
+          </div>
+        )}
+
+        <div style={{ padding: "12px", borderTop: `1px solid ${S.border}` }}>
+          <p style={{ fontSize: "10px", color: "#6b7280", fontWeight: "bold", marginBottom: "8px", textTransform: "uppercase", letterSpacing: "1px" }}>📚 Subject</p>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+            {SUBJECTS.map(s => (
+              <button key={s.value} onClick={() => setSubject(s.value)}
+                style={{ padding: "6px 10px", borderRadius: "8px", border: `1px solid ${activeChat?.subject === s.value ? S.green : S.border}`, cursor: "pointer", fontSize: "11px", fontWeight: "bold", background: activeChat?.subject === s.value ? S.darkGreen : "#2a2a2a", color: activeChat?.subject === s.value ? "white" : "#9ca3af" }}>
+                {s.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* <div style={{ padding: "12px", borderTop: `1px solid ${S.border}` }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
+            <span style={{ background: "#14532d", color: S.green, padding: "4px 10px", borderRadius: "8px", fontSize: "11px", fontWeight: "bold" }}>⚡ Powered by Groq</span>
+            <span style={{ background: "#1e3a5f", color: "#60a5fa", padding: "4px 10px", borderRadius: "8px", fontSize: "11px", fontWeight: "bold" }}>🆓 100% Free Forever</span>
+            <span style={{ background: "#3b1f00", color: "#fbbf24", padding: "4px 10px", borderRadius: "8px", fontSize: "11px", fontWeight: "bold" }}>🌐 Open Source</span>
+          </div>
+        </div> */}
+      </div>
+
+      {/* MAIN */}
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, height: "100vh", overflow: "hidden" }}>
+
+        {/* HEADER */}
+        <div style={{ padding: "12px 16px", borderBottom: `1px solid ${S.border}`, display: "flex", alignItems: "center", gap: "10px", background: S.sidebar, flexShrink: 0 }}>
+          <button onClick={() => setSidebarOpen(o => !o)} style={{ background: "none", border: "none", color: "#9ca3af", fontSize: "20px", cursor: "pointer", flexShrink: 0 }}>☰</button>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <span style={{ fontWeight: "bold", fontSize: "15px" }}>🧞 Genie</span>
+            <span style={{ fontSize: "11px", color: S.green, marginLeft: "8px" }}>● Online • {activeChat?.subject}</span>
+          </div>
+          {weakTopics.length > 0 && !isMobile && (
+            <div style={{ background: "#3b1f00", border: "1px solid #f59e0b", borderRadius: "8px", padding: "4px 10px", fontSize: "11px", color: "#fbbf24", fontWeight: "bold", flexShrink: 0 }}>
+              ⚠️ {weakTopics.length} weak
+            </div>
+          )}
+          <button onClick={() => setExamMode(e => !e)}
+            style={{ background: examMode ? "#1e3a5f" : "#2a2a2a", border: `1px solid ${examMode ? "#60a5fa" : S.border}`, color: examMode ? "#60a5fa" : "#9ca3af", borderRadius: "10px", padding: "6px 12px", fontWeight: "bold", fontSize: "12px", cursor: "pointer", flexShrink: 0 }}>
+            {examMode ? "🎓 ON" : "🎓 Exam"}
+          </button>
+          <button onClick={() => { setQuizMode(q => !q); setShowChallenge(false); setShowExamInfo(false); }}
+            style={{ background: quizMode ? S.darkGreen : "#2a2a2a", border: `1px solid ${quizMode ? S.green : S.border}`, color: quizMode ? "white" : S.green, borderRadius: "10px", padding: "6px 12px", fontWeight: "bold", fontSize: "12px", cursor: "pointer", flexShrink: 0 }}>
+            {quizMode ? "💬 Chat" : "🏆 Quiz"}
+          </button>
+        </div>
+
+        {/* CONTENT */}
+        {showChallenge ? (
+          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", background: S.bg, padding: "20px", overflowY: "auto" }}>
+            <div style={{ background: S.sidebar, border: `1px solid ${S.border}`, borderRadius: "20px", padding: "24px", width: "100%", maxWidth: "560px" }}>
+              <div style={{ textAlign: "center", marginBottom: "16px" }}>
+                <span style={{ fontSize: "36px" }}>🏆</span>
+                <h2 style={{ color: "#fbbf24", margin: "4px 0 0", fontSize: "1.3rem" }}>Daily Challenge</h2>
+                <p style={{ color: "#6b7280", margin: "4px 0 0", fontSize: "12px" }}>
+                  {dailyChallenge ? `${dailyChallenge.level} • ${dailyChallenge.subject} • ${dailyChallenge.exam}` : "Loading..."}
+                </p>
+              </div>
+              {!dailyChallenge ? (
+                <div style={{ textAlign: "center", padding: "40px" }}><p style={{ color: "#fbbf24" }}>⏳ Loading...</p></div>
+              ) : (
+                <>
+                  <div style={{ background: S.bg, borderRadius: "14px", padding: "20px", marginBottom: "16px" }}>
+                    <p style={{ color: "#9ca3af", fontSize: "12px", margin: "0 0 8px" }}>📅 {dailyChallenge.date}</p>
+                    <p style={{ fontSize: "17px", fontWeight: "600", lineHeight: "1.6", margin: 0 }}>{dailyChallenge.question}</p>
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginBottom: "16px" }}>
+                    {dailyChallenge.options?.map((opt, i) => {
+                      const isCorrect = opt.charAt(0) === dailyChallenge.answer;
+                      const isSelected = challengeSelected === opt;
+                      let bg = "#1e1e1e", border = "#2a2a2a", color = "white";
+                      if (challengeAnswered) {
+                        if (isCorrect) { bg = "#14532d"; border = "#4ade80"; color = "#4ade80"; }
+                        else if (isSelected) { bg = "#450a0a"; border = "#ef4444"; color = "#ef4444"; }
+                      }
+                      return (
+                        <button key={i} onClick={() => { if (!challengeAnswered) { setChallengeSelected(opt); setChallengeAnswered(true); } }}
+                          style={{ background: bg, border: `2px solid ${border}`, borderRadius: "12px", padding: "14px 18px", color, textAlign: "left", cursor: challengeAnswered ? "default" : "pointer", fontSize: "15px", transition: "all 0.2s" }}>
+                          {opt}
+                          {challengeAnswered && isCorrect && <span style={{ float: "right" }}>✅</span>}
+                          {challengeAnswered && isSelected && !isCorrect && <span style={{ float: "right" }}>❌</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {challengeAnswered && (
+                    <div style={{ background: "#1a2e1a", border: "1px solid #166534", borderRadius: "12px", padding: "16px", marginBottom: "12px" }}>
+                      <p style={{ color: "#4ade80", fontWeight: "bold", margin: "0 0 4px" }}>
+                        {challengeSelected?.charAt(0) === dailyChallenge.answer ? "🎉 Correct!" : "❌ Wrong!"}
+                      </p>
+                      <p style={{ color: "#d1d5db", margin: 0, lineHeight: "1.6", fontSize: "14px" }}>{dailyChallenge.explanation}</p>
+                    </div>
+                  )}
+                  <div style={{ display: "flex", gap: "8px" }}>
+                    <button onClick={loadDailyChallenge} style={{ flex: 1, background: "#3b1f00", border: "1px solid #f59e0b", borderRadius: "12px", padding: "12px", color: "#fbbf24", fontWeight: "bold", fontSize: "14px", cursor: "pointer" }}>🔄 New</button>
+                    <button onClick={() => setShowChallenge(false)} style={{ flex: 1, background: "#2a2a2a", border: `1px solid ${S.border}`, borderRadius: "12px", padding: "12px", color: "#9ca3af", fontWeight: "bold", fontSize: "14px", cursor: "pointer" }}>💬 Chat</button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+
+        ) : showExamInfo ? (
+          <div style={{ flex: 1, overflowY: "auto", padding: "20px", background: S.bg }}>
+            <div style={{ maxWidth: "700px", margin: "0 auto" }}>
+              <h2 style={{ color: "#60a5fa", marginBottom: "16px" }}>📚 Exam Prep</h2>
+              <div style={{ display: "flex", gap: "8px", marginBottom: "12px", flexWrap: "wrap" }}>
+                {["TNPSC", "NEET", "JEE", "10th TN Board", "12th TN Board"].map(e => (
+                  <button key={e} onClick={() => { setSelectedExam(e); loadExamInfo(e, examInfoType); }}
+                    style={{ padding: "8px 16px", borderRadius: "10px", border: `1px solid ${selectedExam === e ? "#3b82f6" : S.border}`, background: selectedExam === e ? "#1e3a5f" : S.sidebar, color: selectedExam === e ? "#60a5fa" : "#9ca3af", cursor: "pointer", fontSize: "13px", fontWeight: "bold" }}>
+                    {e}
+                  </button>
+                ))}
+              </div>
+              <div style={{ display: "flex", gap: "8px", marginBottom: "20px", flexWrap: "wrap" }}>
+                {[["syllabus", "📖 Syllabus"], ["previous_years", "📝 Previous Years"], ["important_topics", "🎯 Important Topics"]].map(([type, label]) => (
+                  <button key={type} onClick={() => { setExamInfoType(type); loadExamInfo(selectedExam, type); }}
+                    style={{ padding: "8px 16px", borderRadius: "10px", border: `1px solid ${examInfoType === type ? "#f59e0b" : S.border}`, background: examInfoType === type ? "#3b1f00" : S.sidebar, color: examInfoType === type ? "#fbbf24" : "#9ca3af", cursor: "pointer", fontSize: "13px" }}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+              {examInfoLoading ? (
+                <div style={{ textAlign: "center", padding: "40px" }}><p style={{ color: "#60a5fa" }}>⏳ Loading...</p></div>
+              ) : examInfoData ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                  {examInfoData.data?.map((item, i) => (
+                    <div key={i} style={{ background: S.sidebar, border: `1px solid ${S.border}`, borderRadius: "14px", padding: "16px" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
+                        <h3 style={{ color: "#e5e7eb", margin: 0, fontSize: "15px" }}>{item.subject}</h3>
+                        {item.weightage && (
+                          <span style={{ background: item.weightage === "high" ? "#14532d" : item.weightage === "medium" ? "#3b1f00" : S.sidebar, color: item.weightage === "high" ? "#4ade80" : item.weightage === "medium" ? "#fbbf24" : "#9ca3af", padding: "2px 10px", borderRadius: "6px", fontSize: "11px", fontWeight: "bold" }}>
+                            {item.weightage?.toUpperCase()}
+                          </span>
+                        )}
+                      </div>
+                      {(item.chapters || item.topics) && (
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                          {(item.chapters || item.topics)?.map((t, j) => (
+                            <span key={j} style={{ background: S.bg, border: `1px solid ${S.border}`, color: "#9ca3af", padding: "4px 10px", borderRadius: "8px", fontSize: "12px" }}>{t}</span>
+                          ))}
+                        </div>
+                      )}
+                      {item.question && (
+                        <div>
+                          <p style={{ color: "#9ca3af", fontSize: "12px", margin: "0 0 6px" }}>📅 {item.year}</p>
+                          <p style={{ color: "#e5e7eb", margin: "0 0 8px", lineHeight: "1.6" }}>{item.question}</p>
+                          <p style={{ color: "#4ade80", margin: 0, fontSize: "13px" }}>✅ {item.answer}</p>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+              <button onClick={() => setShowExamInfo(false)} style={{ marginTop: "16px", background: "#2a2a2a", border: `1px solid ${S.border}`, borderRadius: "12px", padding: "12px 24px", color: "#9ca3af", cursor: "pointer", fontSize: "14px" }}>
+                💬 Chat-க்கு போ
+              </button>
+            </div>
+          </div>
+
+        ) : quizMode ? (
+          <QuizMode subject={activeChat?.subject || "General"} onExit={() => setQuizMode(false)} weakTopics={weakTopics} onQuizComplete={handleQuizComplete} />
+
+        ) : (
+          <>
+            {/* MESSAGES */}
             <div style={{ flex: 1, overflowY: "auto", padding: "20px" }}>
               {(!activeChat?.messages?.length) && (
-                <div style={{ textAlign: "center", marginTop: "12%" }}>
+                <div style={{ textAlign: "center", marginTop: "10%" }}>
                   <p style={{ fontSize: "48px" }}>🧞</p>
                   <h2 style={{ color: S.green, marginBottom: "8px" }}>வணக்கம்! நான் Genie</h2>
                   <p style={{ color: "#6b7280", marginBottom: "24px" }}>Subject select பண்ணி கேளு!</p>
@@ -575,9 +743,7 @@ async function sendWithFile() {
                     <div style={{ background: "#3b1f00", border: "1px solid #f59e0b", borderRadius: "12px", padding: "12px", marginBottom: "16px", maxWidth: "400px", margin: "0 auto 16px" }}>
                       <p style={{ color: "#fbbf24", fontWeight: "bold", margin: "0 0 6px", fontSize: "13px" }}>🎯 உன் Weak Topics:</p>
                       <div style={{ display: "flex", flexWrap: "wrap", gap: "4px", justifyContent: "center" }}>
-                        {weakTopics.slice(0, 5).map(t => (
-                          <span key={t} style={{ background: "#450a0a", color: "#f87171", padding: "2px 8px", borderRadius: "6px", fontSize: "11px" }}>{t}</span>
-                        ))}
+                        {weakTopics.slice(0, 5).map(t => <span key={t} style={{ background: "#450a0a", color: "#f87171", padding: "2px 8px", borderRadius: "6px", fontSize: "11px" }}>{t}</span>)}
                       </div>
                       <button onClick={() => setQuizMode(true)} style={{ background: "#f59e0b", color: "#1a1a1a", border: "none", borderRadius: "8px", padding: "6px 14px", fontWeight: "bold", fontSize: "12px", cursor: "pointer", marginTop: "8px" }}>
                         🏆 Weak Topics Quiz பண்ணு!
@@ -586,47 +752,36 @@ async function sendWithFile() {
                   )}
                   <div style={{ display: "flex", gap: "8px", justifyContent: "center", flexWrap: "wrap" }}>
                     {QUICK.map(q => (
-                      <button key={q} onClick={() => send(q)} style={{ background: "#1a1a1a", border: `1px solid ${S.border}`, borderRadius: "12px", padding: "10px 16px", fontSize: "13px", color: "#d1d5db", cursor: "pointer" }}>{q}</button>
+                      <button key={q} onClick={() => send(q)} style={{ background: S.sidebar, border: `1px solid ${S.border}`, borderRadius: "12px", padding: "10px 16px", fontSize: "13px", color: "#d1d5db", cursor: "pointer" }}>{q}</button>
                     ))}
                   </div>
                 </div>
               )}
-           {activeChat?.messages.map((m, i) => (
-  <div key={i} style={{ marginBottom: "16px", display: "flex", justifyContent: m.role === "user" ? "flex-end" : "flex-start", animation: "fadeIn 0.3s ease" }}
-    onMouseEnter={e => e.currentTarget.querySelector('.msg-actions').style.opacity = "1"}
-    onMouseLeave={e => e.currentTarget.querySelector('.msg-actions').style.opacity = "0"}>
-    {m.role === "ai" && <div style={{ width: "32px", height: "32px", borderRadius: "50%", background: S.darkGreen, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "16px", marginRight: "8px", flexShrink: 0 }}>🧞</div>}
-    <div style={{ maxWidth: "85%", minWidth: "60%" }}>
-      <div style={{ padding: "12px 16px", borderRadius: m.role === "user" ? "18px 18px 4px 18px" : "18px 18px 18px 4px", background: m.role === "user" ? S.darkGreen : "#1e1e1e", color: "white", whiteSpace: "pre-wrap", lineHeight: "1.7", fontSize: "14px", border: m.role === "ai" ? `1px solid ${S.border}` : "none" }}>{m.text}</div>
-      <div className="msg-actions" style={{ display: "flex", gap: "6px", marginTop: "4px", justifyContent: m.role === "user" ? "flex-end" : "flex-start", opacity: "0", transition: "opacity 0.2s ease" }}>
-        <span style={{ color: "#4b5563", fontSize: "10px", alignSelf: "center" }}>
-          {new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-        </span>
-        <button onClick={() => navigator.clipboard.writeText(m.text)}
-          style={{ background: "none", border: `1px solid ${S.border}`, color: "#6b7280", borderRadius: "6px", padding: "2px 8px", fontSize: "11px", cursor: "pointer" }}>
-          📋 Copy
-        </button>
-        <button onClick={() => m.role === "ai" ? send(activeChat.messages[i - 1]?.text) : send(m.text)}
-          style={{ background: "none", border: `1px solid ${S.border}`, color: "#6b7280", borderRadius: "6px", padding: "2px 8px", fontSize: "11px", cursor: "pointer" }}>
-          🔄 Retry
-        </button>
-        {m.role === "user" && (
-          <button onClick={() => setInput(m.text)}
-            style={{ background: "none", border: `1px solid ${S.border}`, color: "#6b7280", borderRadius: "6px", padding: "2px 8px", fontSize: "11px", cursor: "pointer" }}>
-            ✏️ Edit
-          </button>
-        )}
-        {m.role === "ai" && (
-          <button onClick={() => speaking ? stopSpeak() : speak(m.text)}
-            style={{ background: "none", border: `1px solid ${S.border}`, color: speaking ? "#f87171" : "#6b7280", borderRadius: "6px", padding: "2px 8px", fontSize: "11px", cursor: "pointer" }}>
-            {speaking ? "⏹ Stop" : "🔊 Speak"}
-          </button>
-        )}
-      </div>
-    </div>
-    {m.role === "user" && <div style={{ width: "32px", height: "32px", borderRadius: "50%", background: "#1d4ed8", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "16px", marginLeft: "8px", flexShrink: 0 }}>👤</div>}
-  </div>
-))}
+
+              {activeChat?.messages.map((m, i) => (
+                <div key={i} style={{ marginBottom: "16px", display: "flex", justifyContent: m.role === "user" ? "flex-end" : "flex-start", animation: "fadeIn 0.3s ease" }}
+                  onMouseEnter={e => { const el = e.currentTarget.querySelector('.msg-actions'); if (el) el.style.opacity = "1"; }}
+                  onMouseLeave={e => { const el = e.currentTarget.querySelector('.msg-actions'); if (el) el.style.opacity = "0"; }}>
+                  {m.role === "ai" && <div style={{ width: "32px", height: "32px", borderRadius: "50%", background: S.darkGreen, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "16px", marginRight: "8px", flexShrink: 0, alignSelf: "flex-start" }}>🧞</div>}
+                  <div style={{ maxWidth: "85%", minWidth: "40%" }}>
+                    {m.file && m.file !== "pdf" && <img src={m.file} alt="upload" style={{ width: "120px", borderRadius: "8px", marginBottom: "6px", display: "block" }} />}
+                    {m.file === "pdf" && <div style={{ background: "#2a2a2a", borderRadius: "8px", padding: "6px 10px", fontSize: "12px", color: "#9ca3af", marginBottom: "6px" }}>📄 {m.fileName}</div>}
+                    <div style={{ padding: "12px 16px", borderRadius: m.role === "user" ? "18px 18px 4px 18px" : "18px 18px 18px 4px", background: m.role === "user" ? S.darkGreen : "#1e1e1e", color: "white", lineHeight: "1.7", fontSize: "14px", border: m.role === "ai" ? `1px solid ${S.border}` : "none" }}>
+                      {m.role === "ai" ? <MsgText text={m.text} /> : <span style={{ whiteSpace: "pre-wrap" }}>{m.text}</span>}
+                    </div>
+                    <div className="msg-actions" style={{ display: "flex", gap: "6px", marginTop: "4px", justifyContent: m.role === "user" ? "flex-end" : "flex-start", opacity: "0", transition: "opacity 0.2s ease" }}>
+                      <span style={{ color: "#4b5563", fontSize: "10px", alignSelf: "center" }}>
+                        {new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                      </span>
+                      <button onClick={() => navigator.clipboard.writeText(m.text)} style={{ background: "none", border: `1px solid ${S.border}`, color: "#6b7280", borderRadius: "6px", padding: "2px 8px", fontSize: "11px", cursor: "pointer" }}>📋 Copy</button>
+                      <button onClick={() => m.role === "ai" ? send(activeChat.messages[i - 1]?.text) : send(m.text)} style={{ background: "none", border: `1px solid ${S.border}`, color: "#6b7280", borderRadius: "6px", padding: "2px 8px", fontSize: "11px", cursor: "pointer" }}>🔄 Retry</button>
+                      {m.role === "user" && <button onClick={() => setInput(m.text)} style={{ background: "none", border: `1px solid ${S.border}`, color: "#6b7280", borderRadius: "6px", padding: "2px 8px", fontSize: "11px", cursor: "pointer" }}>✏️ Edit</button>}
+                      {m.role === "ai" && <button onClick={() => speaking ? stopSpeak() : speak(m.text)} style={{ background: "none", border: `1px solid ${S.border}`, color: speaking ? "#f87171" : "#6b7280", borderRadius: "6px", padding: "2px 8px", fontSize: "11px", cursor: "pointer" }}>{speaking ? "⏹ Stop" : "🔊 Speak"}</button>}
+                    </div>
+                  </div>
+                  {m.role === "user" && <div style={{ width: "32px", height: "32px", borderRadius: "50%", background: "#1d4ed8", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "16px", marginLeft: "8px", flexShrink: 0, alignSelf: "flex-start" }}>👤</div>}
+                </div>
+              ))}
 
               {loading && (
                 <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
@@ -639,54 +794,37 @@ async function sendWithFile() {
               <div ref={bottomRef} />
             </div>
 
-           <div style={{ borderTop: `1px solid ${S.border}`, background: S.sidebar }}>
-  {/* File Preview */}
-  {filePreview && (
-    <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "8px 16px", background: "#1a1a1a", borderBottom: `1px solid ${S.border}` }}>
-      {filePreview === "pdf"
-        ? <span style={{ fontSize: "24px" }}>📄</span>
-        : <img src={filePreview} alt="preview" style={{ width: "40px", height: "40px", borderRadius: "8px", objectFit: "cover" }} />
-      }
-      <span style={{ color: "#9ca3af", fontSize: "12px" }}>{uploadedFile?.name}</span>
-      <button onClick={() => { setUploadedFile(null); setFilePreview(null); }}
-        style={{ background: "none", border: "none", color: "#ef4444", cursor: "pointer", marginLeft: "auto", fontSize: "16px" }}>✕</button>
-    </div>
-  )}
-
-  {/* Input Box */}
-  <div style={{ padding: "16px 20px" }}>
-    <div style={{ display: "flex", gap: "10px", alignItems: "center", background: "#2a2a2a", borderRadius: "14px", padding: "8px 8px 8px 16px" }}>
-      {/* Hidden file input */}
-      <input type="file" ref={fileRef} onChange={handleFile} accept="image/*,.pdf" style={{ display: "none" }} />
-      
-      {/* Attach button */}
-      <button onClick={() => fileRef.current.click()}
-        style={{ background: "none", border: "none", color: "#6b7280", fontSize: "20px", cursor: "pointer", padding: "4px", flexShrink: 0 }}>
-        📎
-      </button>
-
-      {/* Text Input */}
-      <input style={{ flex: 1, background: "none", border: "none", outline: "none", color: "white", fontSize: "15px", minWidth: 0 }}
-        placeholder={uploadedFile ? `${uploadedFile.name} பத்தி கேளு...` : `${activeChat?.subject} பத்தி கேளு...`}
-        value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === "Enter" && (uploadedFile ? sendWithFile() : send())} />
-
-      {/* Voice button */}
-      <button onClick={listening ? () => setListening(false) : startVoice}
-        style={{ background: listening ? "#450a0a" : "none", border: `1px solid ${listening ? "#ef4444" : "transparent"}`, borderRadius: "10px", padding: "8px 10px", color: listening ? "#ef4444" : "#9ca3af", fontSize: "16px", cursor: "pointer", flexShrink: 0 }}>
-        {listening ? "🔴" : "🎤"}
-      </button>
-
-      {/* Send button */}
-      <button onClick={() => uploadedFile ? sendWithFile() : send()}
-        style={{ background: loading ? "#14532d" : "linear-gradient(135deg, #166534, #15803d)", border: "none", borderRadius: "10px", padding: "10px 20px", color: "white", fontWeight: "bold", fontSize: "14px", cursor: "pointer", boxShadow: "0 4px 12px rgba(22,101,52,0.3)", whiteSpace: "nowrap" }}>
-        {loading ? "..." : uploadedFile ? "📎 Send" : "கேளு ➤"}
-      </button>
-    </div>
-    <p style={{ textAlign: "center", fontSize: "11px", color: "#4b5563", margin: "8px 0 0" }}>ExamGenie • Free Tamil AI Tutor • Open Source</p>
-  </div>
-</div>
+            {/* INPUT */}
+            <div style={{ borderTop: `1px solid ${S.border}`, background: S.sidebar, flexShrink: 0 }}>
+              {filePreview && (
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "8px 16px", background: S.bg, borderBottom: `1px solid ${S.border}` }}>
+                  {filePreview === "pdf" ? <span style={{ fontSize: "24px" }}>📄</span> : <img src={filePreview} alt="preview" style={{ width: "40px", height: "40px", borderRadius: "8px", objectFit: "cover" }} />}
+                  <span style={{ color: "#9ca3af", fontSize: "12px" }}>{uploadedFile?.name}</span>
+                  <button onClick={() => { setUploadedFile(null); setFilePreview(null); }} style={{ background: "none", border: "none", color: "#ef4444", cursor: "pointer", marginLeft: "auto", fontSize: "16px" }}>✕</button>
+                </div>
+              )}
+              <div style={{ padding: "12px 16px" }}>
+                <div style={{ display: "flex", gap: "8px", alignItems: "center", background: "#2a2a2a", borderRadius: "14px", padding: "8px 8px 8px 14px" }}>
+                  <input type="file" ref={fileRef} onChange={handleFile} accept="image/*,.pdf" style={{ display: "none" }} />
+                  <button onClick={() => fileRef.current.click()} style={{ background: "none", border: "none", color: "#6b7280", fontSize: "18px", cursor: "pointer", padding: "4px", flexShrink: 0 }}>📎</button>
+                  <input style={{ flex: 1, background: "none", border: "none", outline: "none", color: "white", fontSize: "15px", minWidth: 0 }}
+                    placeholder={uploadedFile ? `${uploadedFile.name} பத்தி கேளு...` : `${activeChat?.subject} பத்தி கேளு...`}
+                    value={input} onChange={e => setInput(e.target.value)}
+                    onKeyDown={e => e.key === "Enter" && (uploadedFile ? sendWithFile() : send())} />
+                  <button onClick={listening ? () => setListening(false) : startVoice}
+                    style={{ background: listening ? "#450a0a" : "none", border: `1px solid ${listening ? "#ef4444" : "transparent"}`, borderRadius: "10px", padding: "8px 10px", color: listening ? "#ef4444" : "#9ca3af", fontSize: "16px", cursor: "pointer", flexShrink: 0 }}>
+                    {listening ? "🔴" : "🎤"}
+                  </button>
+                  <button onClick={() => uploadedFile ? sendWithFile() : send()}
+                    style={{ background: loading ? "#14532d" : "linear-gradient(135deg, #166534, #15803d)", border: "none", borderRadius: "10px", padding: "10px 16px", color: "white", fontWeight: "bold", fontSize: "14px", cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0 }}>
+                    {loading ? "..." : uploadedFile ? "📎 Send" : "கேளு ➤"}
+                  </button>
+                </div>
+                <p style={{ textAlign: "center", fontSize: "11px", color: "#4b5563", margin: "6px 0 0" }}>ExamGenie • Free Tamil AI Tutor • Open Source</p>
+              </div>
+            </div>
           </>
-        }
+        )}
       </div>
 
       <style>{`
@@ -695,6 +833,7 @@ async function sendWithFile() {
         ::-webkit-scrollbar { width: 4px; }
         ::-webkit-scrollbar-track { background: #1a1a1a; }
         ::-webkit-scrollbar-thumb { background: #3f3f3f; border-radius: 4px; }
+        .msg-actions button:hover { background: #2a2a2a !important; }
       `}</style>
     </div>
   );

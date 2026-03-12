@@ -1,4 +1,5 @@
 from flask import Flask, request, jsonify
+from flask import Response, stream_with_context
 from flask_cors import CORS
 from groq import Groq
 from tavily import TavilyClient
@@ -236,6 +237,7 @@ def ask():
     data = request.get_json()
     question = data.get("text", "")
     exam_mode = data.get("exam_mode", False)
+    history = data.get("history", [])
 
     tool_results = run_tools(question)
 
@@ -258,47 +260,54 @@ def ask():
         except:
             pass
 
-# Detect language
-
+    # Detect language
+    import re
     tamil_chars = sum(1 for c in question if '\u0B80' <= c <= '\u0BFF')
     tamil_words = ['என்ன', 'எப்படி', 'ஏன்', 'யார்', 'எங்கு', 'எது']
-    tanglish_words = ['enna', 'epdi', 'eppadi', 'sollu', 'pannau', 'panna', 'iruku', 
-                  'varuma', 'explain pannau', 'soli', 'kudu', 'theriyuma', 'nalla', 
-                  'romba', 'konjam', 'puraya', 'puriyala', 'sari', 'inga', 'anda',
-                  'ithu', 'athu', 'enga', 'yaru', 'eppov', 'eppo', 'paaru',
-                  'pakka', 'paarunga', 'sollunga', 'pannunga', 'theriyum', 'illa',
-                  'na', 'da', 'bro', 'ma', 'di', 'nga', 'la', 'nu', 'ta']
-    
-    if tamil_chars > 3 or any(w in question.lower() for w in tamil_words):
+    tanglish_words = ['enna', 'epdi', 'eppadi', 'sollu', 'pannau', 'panna', 'iruku',
+                      'varuma', 'soli', 'kudu', 'theriyuma', 'nalla', 'romba', 'konjam',
+                      'puraya', 'puriyala', 'sari', 'inga', 'anda', 'ithu', 'athu',
+                      'enga', 'yaru', 'eppo', 'paaru', 'pakka', 'paarunga', 'sollunga',
+                      'pannunga', 'theriyum', 'illa', 'bro', 'ma', 'nga', 'nu']
+
+    q_lower = question.lower()
+    q_words = re.findall(r'\b\w+\b', q_lower)
+    is_tamil = tamil_chars > 3 or any(w in question for w in tamil_words)
+    is_tanglish = any(w in q_words for w in tanglish_words)
+
+    if is_tamil:
         lang_instruction = "RESPOND IN TAMIL ONLY. NO ENGLISH."
-    elif any(w in question.lower() for w in tanglish_words):
-        lang_instruction = "RESPOND IN TANGLISH ONLY (mix of Tamil words written in English + English). Example: 'Photosynthesis nu sollunga, plants sunlight-a use panni food prepare pannunga'. NO PURE TAMIL SCRIPT."
+    elif is_tanglish:
+        lang_instruction = "RESPOND IN TANGLISH ONLY. NO PURE TAMIL SCRIPT."
     else:
         lang_instruction = "RESPOND IN ENGLISH ONLY. NO TAMIL."
 
     if context:
-        prompt = f"""Tool Results:
-{context}
-
-Student Question: {question}
-
-{lang_instruction}
-இந்த results வச்சு accurate-ஆ answer சொல்லு."""
+        prompt = f"""Tool Results:\n{context}\nStudent Question: {question}\n{lang_instruction}"""
         system = EXAM_PROMPT
     else:
         prompt = f"{lang_instruction}\n\n{question}"
         system = SYSTEM_PROMPT
-        
-    history = data.get("history", [])
+
     messages = [{"role": "system", "content": system}]
     for h in history[:-1]:
         messages.append({"role": h["role"], "content": h["content"]})
     messages.append({"role": "user", "content": prompt})
-    response = client.chat.completions.create(
-       model="llama-3.3-70b-versatile",
-       messages=messages
-    )
-    return jsonify({"answer": response.choices[0].message.content})
+
+    def generate():
+        stream = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=messages,
+            stream=True
+        )
+        for chunk in stream:
+            delta = chunk.choices[0].delta.content
+            if delta:
+                yield f"data: {delta}\n\n"
+        yield "data: [DONE]\n\n"
+
+    return Response(stream_with_context(generate()), mimetype="text/event-stream",
+                   headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 @app.route("/analyze-file", methods=["POST"])
 def analyze_file():
@@ -382,6 +391,75 @@ def search():
         return jsonify(tavily.search(query=query, search_depth="basic", max_results=3))
     except:
         return jsonify({"error": "Search failed"}), 500
+
+@app.route("/daily-challenge", methods=["GET"])
+def daily_challenge():
+    import datetime
+    today = datetime.date.today().strftime("%Y-%m-%d")
+    day = datetime.date.today().day
+    
+    challenges = [
+        {"level": "10th Standard", "subject": "Science", "exam": "TN Board"},
+        {"level": "12th Standard", "subject": "Maths", "exam": "TN Board"},
+        {"level": "College", "subject": "Aptitude", "exam": "Campus Placement"},
+        {"level": "TNPSC", "subject": "General Studies", "exam": "TNPSC Group 2"},
+        {"level": "NEET", "subject": "Biology", "exam": "NEET"},
+        {"level": "JEE", "subject": "Physics", "exam": "JEE"},
+        {"level": "College", "subject": "Data Structures", "exam": "Technical Interview"},
+    ]
+    
+    challenge = challenges[day % len(challenges)]
+    
+    prompt = f"""Generate 1 MCQ question for {challenge['level']} students.
+Subject: {challenge['subject']}, Exam: {challenge['exam']}, Date: {today}
+Return ONLY JSON:
+{{"question": "...", "options": ["A)...", "B)...", "C)...", "D)..."], "answer": "A", "explanation": "...", "subject": "{challenge['subject']}", "level": "{challenge['level']}", "exam": "{challenge['exam']}", "date": "{today}"}}"""
+
+    response = client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=[{"role": "user", "content": prompt}]
+    )
+    text = response.choices[0].message.content
+    try:
+        data = json.loads(text[text.find("{"):text.rfind("}")+1])
+        return jsonify(data)
+    except:
+        return jsonify({"error": "Challenge generate ஆகல!"}), 500
+    
+@app.route("/exam-info", methods=["POST"])
+def exam_info():
+    data = request.get_json()
+    exam = data.get("exam", "TNPSC")
+    info_type = data.get("type", "syllabus")  # syllabus / previous_years / important_topics
+
+    if info_type == "syllabus":
+        prompt = f"""Give chapter-wise syllabus for {exam} exam in Tamil Nadu.
+Format as JSON:
+{{"exam": "{exam}", "type": "syllabus", "data": [{{"subject": "...", "chapters": ["chapter1", "chapter2"]}}]}}
+Return ONLY JSON."""
+
+    elif info_type == "previous_years":
+        prompt = f"""Give 5 important previous year questions for {exam} exam.
+Format as JSON:
+{{"exam": "{exam}", "type": "previous_years", "data": [{{"year": "2023", "question": "...", "answer": "...", "subject": "..."}}]}}
+Return ONLY JSON."""
+
+    elif info_type == "important_topics":
+        prompt = f"""Give most important topics for {exam} exam preparation.
+Format as JSON:
+{{"exam": "{exam}", "type": "important_topics", "data": [{{"subject": "...", "topics": ["topic1", "topic2"], "weightage": "high/medium/low"}}]}}
+Return ONLY JSON."""
+
+    response = client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=[{"role": "user", "content": prompt}]
+    )
+    text = response.choices[0].message.content
+    try:
+        result = json.loads(text[text.find("{"):text.rfind("}")+1])
+        return jsonify(result)
+    except:
+        return jsonify({"error": "Info generate ஆகல!"}), 500
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
