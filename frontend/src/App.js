@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import ReactMarkdown from "react-markdown";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from "recharts";
 
 const API_URL = window.location.hostname === "localhost"
   ? "http://127.0.0.1:8000"
@@ -17,30 +18,24 @@ const SUBJECTS = [
 const QUICK = ["Newton's law என்ன?", "Photosynthesis விளக்கு", "Important 10th questions"];
 function generateId() { return Date.now().toString(); }
 function newChat() { return { id: generateId(), title: "New Chat", subject: "General", messages: [], createdAt: new Date().toLocaleTimeString() }; }
-
 const S = { bg: "#0f0f0f", sidebar: "#1a1a1a", border: "#2a2a2a", green: "#4ade80", darkGreen: "#166534" };
 
-// ─── MARKDOWN MESSAGE ────────────────────────────────────────
 function MsgText({ text }) {
   return (
-    <ReactMarkdown
-      components={{
-        p: ({ children }) => <p style={{ margin: "0 0 8px", lineHeight: "1.7" }}>{children}</p>,
-        strong: ({ children }) => <strong style={{ color: "#4ade80" }}>{children}</strong>,
-        ul: ({ children }) => <ul style={{ margin: "4px 0 8px", paddingLeft: "20px" }}>{children}</ul>,
-        ol: ({ children }) => <ol style={{ margin: "4px 0 8px", paddingLeft: "20px" }}>{children}</ol>,
-        li: ({ children }) => <li style={{ marginBottom: "4px", lineHeight: "1.6" }}>{children}</li>,
-        code: ({ inline, children }) => inline
-          ? <code style={{ background: "#2a2a2a", padding: "2px 6px", borderRadius: "4px", fontSize: "13px", color: "#fbbf24" }}>{children}</code>
-          : <pre style={{ background: "#0f0f0f", border: "1px solid #2a2a2a", borderRadius: "8px", padding: "12px", overflowX: "auto", fontSize: "13px", color: "#e5e7eb" }}><code>{children}</code></pre>,
-        h1: ({ children }) => <h1 style={{ color: "#4ade80", fontSize: "18px", margin: "8px 0 4px" }}>{children}</h1>,
-        h2: ({ children }) => <h2 style={{ color: "#60a5fa", fontSize: "16px", margin: "8px 0 4px" }}>{children}</h2>,
-        h3: ({ children }) => <h3 style={{ color: "#fbbf24", fontSize: "14px", margin: "6px 0 4px" }}>{children}</h3>,
-        blockquote: ({ children }) => <blockquote style={{ borderLeft: "3px solid #4ade80", paddingLeft: "12px", color: "#9ca3af", margin: "8px 0" }}>{children}</blockquote>,
-      }}
-    >
-      {text}
-    </ReactMarkdown>
+    <ReactMarkdown components={{
+      p: ({ children }) => <p style={{ margin: "0 0 8px", lineHeight: "1.7" }}>{children}</p>,
+      strong: ({ children }) => <strong style={{ color: "#4ade80" }}>{children}</strong>,
+      ul: ({ children }) => <ul style={{ margin: "4px 0 8px", paddingLeft: "20px" }}>{children}</ul>,
+      ol: ({ children }) => <ol style={{ margin: "4px 0 8px", paddingLeft: "20px" }}>{children}</ol>,
+      li: ({ children }) => <li style={{ marginBottom: "4px", lineHeight: "1.6" }}>{children}</li>,
+      code: ({ inline, children }) => inline
+        ? <code style={{ background: "#2a2a2a", padding: "2px 6px", borderRadius: "4px", fontSize: "13px", color: "#fbbf24" }}>{children}</code>
+        : <pre style={{ background: "#0f0f0f", border: "1px solid #2a2a2a", borderRadius: "8px", padding: "12px", overflowX: "auto", fontSize: "13px", color: "#e5e7eb" }}><code>{children}</code></pre>,
+      h1: ({ children }) => <h1 style={{ color: "#4ade80", fontSize: "18px", margin: "8px 0 4px" }}>{children}</h1>,
+      h2: ({ children }) => <h2 style={{ color: "#60a5fa", fontSize: "16px", margin: "8px 0 4px" }}>{children}</h2>,
+      h3: ({ children }) => <h3 style={{ color: "#fbbf24", fontSize: "14px", margin: "6px 0 4px" }}>{children}</h3>,
+      blockquote: ({ children }) => <blockquote style={{ borderLeft: "3px solid #4ade80", paddingLeft: "12px", color: "#9ca3af", margin: "8px 0" }}>{children}</blockquote>,
+    }}>{text}</ReactMarkdown>
   );
 }
 
@@ -97,9 +92,11 @@ function QuizMode({ subject, onExit, weakTopics, onQuizComplete }) {
           });
           const data = await res.json();
           setAnalysis(data);
-          onQuizComplete(data.weak_topics || []);
+          onQuizComplete(data.weak_topics || [], score, questions.length, subject);
         } catch { }
         setAnalyzing(false);
+      } else {
+        onQuizComplete([], score, questions.length, subject);
       }
       return;
     }
@@ -251,8 +248,7 @@ function QuizMode({ subject, onExit, weakTopics, onQuizComplete }) {
   if (!questions.length) return (
     <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", background: S.bg, color: "#ef4444" }}>
       <div style={{ textAlign: "center" }}>
-        <p style={{ fontSize: "40px" }}>❌</p>
-        <p>Quiz load ஆகல!</p>
+        <p style={{ fontSize: "40px" }}>❌</p><p>Quiz load ஆகல!</p>
         <button onClick={loadQuiz} style={{ background: S.darkGreen, color: "white", border: "none", borderRadius: "10px", padding: "10px 20px", cursor: "pointer", marginTop: "12px" }}>Retry</button>
       </div>
     </div>
@@ -321,6 +317,10 @@ export default function App() {
     try { return JSON.parse(localStorage.getItem("examgenie_weak_topics")) || []; }
     catch { return []; }
   });
+  const [quizHistory, setQuizHistory] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("examgenie_quiz_history")) || []; }
+    catch { return []; }
+  });
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -335,6 +335,7 @@ export default function App() {
   const [challengeAnswered, setChallengeAnswered] = useState(false);
   const [showChallenge, setShowChallenge] = useState(false);
   const [showExamInfo, setShowExamInfo] = useState(false);
+  const [showDashboard, setShowDashboard] = useState(false);
   const [examInfoData, setExamInfoData] = useState(null);
   const [selectedExam, setSelectedExam] = useState("TNPSC");
   const [examInfoType, setExamInfoType] = useState("syllabus");
@@ -442,19 +443,34 @@ export default function App() {
   }, [weakTopics]);
 
   function updateChat(id, updates) { setChats(cs => cs.map(c => c.id === id ? { ...c, ...updates } : c)); }
+
   function addNewChat() {
     const c = newChat(); setChats(cs => [c, ...cs]); setActiveChatId(c.id);
-    setInput(""); setQuizMode(false); setShowChallenge(false); setShowExamInfo(false);
+    setInput(""); setQuizMode(false); setShowChallenge(false); setShowExamInfo(false); setShowDashboard(false);
     if (isMobile) setSidebarOpen(false);
   }
+
   function deleteChat(id) {
     const r = chats.filter(c => c.id !== id);
     if (!r.length) { const c = newChat(); setChats([c]); setActiveChatId(c.id); }
     else { setChats(r); if (activeChatId === id) setActiveChatId(r[0].id); }
   }
+
   function setSubject(val) { updateChat(activeChat.id, { subject: val }); }
-  function handleQuizComplete(newWeakTopics) {
+
+  function handleQuizComplete(newWeakTopics, score, total, subject) {
     setWeakTopics(prev => [...new Set([...prev, ...newWeakTopics])].slice(0, 10));
+    const entry = {
+      date: new Date().toLocaleDateString(),
+      time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      score, total, subject,
+      percent: Math.round((score / total) * 100)
+    };
+    setQuizHistory(prev => {
+      const updated = [entry, ...prev].slice(0, 20);
+      localStorage.setItem("examgenie_quiz_history", JSON.stringify(updated));
+      return updated;
+    });
   }
 
   async function send(customText) {
@@ -500,30 +516,45 @@ export default function App() {
     setLoading(false);
   }
 
+  // ─── DASHBOARD COMPONENT ─────────────────────────────────
+  const chartData = [...quizHistory].reverse().slice(-10).map((h, i) => ({
+    name: `#${i + 1}`,
+    score: h.percent,
+    subject: h.subject
+  }));
+
+  const subjectStats = quizHistory.reduce((acc, h) => {
+    if (!acc[h.subject]) acc[h.subject] = { total: 0, count: 0 };
+    acc[h.subject].total += h.percent;
+    acc[h.subject].count += 1;
+    return acc;
+  }, {});
+
+  const subjectChartData = Object.entries(subjectStats).map(([subject, data]) => ({
+    subject: subject.slice(0, 8),
+    avg: Math.round(data.total / data.count)
+  }));
+
   return (
     <div style={{ display: "flex", height: "100vh", fontFamily: "'Segoe UI', Arial, sans-serif", background: S.bg, color: "white", overflow: "hidden" }}>
 
-      {/* OVERLAY for mobile */}
       {isMobile && sidebarOpen && (
-        <div onClick={() => setSidebarOpen(false)}
-          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 10 }} />
+        <div onClick={() => setSidebarOpen(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 10 }} />
       )}
 
       {/* SIDEBAR */}
       <div style={{
-  width: sidebarOpen ? "260px" : "0px",
-  minWidth: sidebarOpen ? "260px" : "0px",
-  background: S.sidebar,
-  borderRight: sidebarOpen ? `1px solid ${S.border}` : "none",
-  display: "flex",
-  flexDirection: "column",
-  position: isMobile ? "fixed" : "relative",
-  top: 0, left: 0, height: "100vh",
-  transform: isMobile ? (sidebarOpen ? "translateX(0)" : "translateX(-100%)") : "translateX(0)",
-  transition: "all 0.3s ease",
-  overflow: "hidden",
-  zIndex: 20
-}}>
+        width: sidebarOpen ? "260px" : "0px",
+        minWidth: sidebarOpen ? "260px" : "0px",
+        background: S.sidebar,
+        borderRight: sidebarOpen ? `1px solid ${S.border}` : "none",
+        display: "flex", flexDirection: "column",
+        position: isMobile ? "fixed" : "relative",
+        top: 0, left: 0, height: "100vh",
+        transform: isMobile ? (sidebarOpen ? "translateX(0)" : "translateX(-100%)") : "translateX(0)",
+        transition: "all 0.3s ease",
+        overflow: "hidden", zIndex: 20
+      }}>
         <div style={{ padding: "20px 16px 12px", borderBottom: `1px solid ${S.border}` }}>
           <div style={{ fontSize: "28px" }}>🎓</div>
           <h1 style={{ margin: "4px 0 0", fontSize: "1.3rem", fontWeight: 900 }}>Exam<span style={{ color: S.green }}>Genie</span></h1>
@@ -532,20 +563,24 @@ export default function App() {
 
         <div style={{ padding: "12px" }}>
           <button onClick={addNewChat} style={{ width: "100%", padding: "10px", borderRadius: "10px", border: "1px dashed #3f3f3f", background: "transparent", color: S.green, fontWeight: "bold", fontSize: "14px", cursor: "pointer" }}>➕ New Chat</button>
-          <button onClick={() => { loadDailyChallenge(); setShowChallenge(true); setShowExamInfo(false); setQuizMode(false); if (isMobile) setSidebarOpen(false); }}
+          <button onClick={() => { loadDailyChallenge(); setShowChallenge(true); setShowExamInfo(false); setShowDashboard(false); setQuizMode(false); if (isMobile) setSidebarOpen(false); }}
             style={{ width: "100%", padding: "10px", borderRadius: "10px", border: "1px solid #f59e0b", background: showChallenge ? "#3b1f00" : "transparent", color: "#fbbf24", fontWeight: "bold", fontSize: "13px", cursor: "pointer", marginTop: "6px" }}>
             🏆 Daily Challenge
           </button>
-          <button onClick={() => { setShowExamInfo(true); setShowChallenge(false); setQuizMode(false); loadExamInfo(selectedExam, examInfoType); if (isMobile) setSidebarOpen(false); }}
+          <button onClick={() => { setShowExamInfo(true); setShowChallenge(false); setShowDashboard(false); setQuizMode(false); loadExamInfo(selectedExam, examInfoType); if (isMobile) setSidebarOpen(false); }}
             style={{ width: "100%", padding: "10px", borderRadius: "10px", border: "1px solid #3b82f6", background: showExamInfo ? "#1e3a5f" : "transparent", color: "#60a5fa", fontWeight: "bold", fontSize: "13px", cursor: "pointer", marginTop: "6px" }}>
             📚 Exam Prep
+          </button>
+          <button onClick={() => { setShowDashboard(true); setShowChallenge(false); setShowExamInfo(false); setQuizMode(false); if (isMobile) setSidebarOpen(false); }}
+            style={{ width: "100%", padding: "10px", borderRadius: "10px", border: "1px solid #818cf8", background: showDashboard ? "#1a1a2e" : "transparent", color: "#818cf8", fontWeight: "bold", fontSize: "13px", cursor: "pointer", marginTop: "6px" }}>
+            📊 Progress Dashboard
           </button>
         </div>
 
         <div style={{ flex: 1, overflowY: "auto", padding: "0 12px" }}>
           <p style={{ fontSize: "10px", color: "#6b7280", fontWeight: "bold", marginBottom: "6px", textTransform: "uppercase", letterSpacing: "1px" }}>Recent Chats</p>
           {chats.map(chat => (
-            <div key={chat.id} onClick={() => { setActiveChatId(chat.id); setQuizMode(false); setShowChallenge(false); setShowExamInfo(false); if (isMobile) setSidebarOpen(false); }}
+            <div key={chat.id} onClick={() => { setActiveChatId(chat.id); setQuizMode(false); setShowChallenge(false); setShowExamInfo(false); setShowDashboard(false); if (isMobile) setSidebarOpen(false); }}
               style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px", borderRadius: "10px", marginBottom: "4px", cursor: "pointer", background: chat.id === activeChatId ? S.darkGreen : "transparent" }}>
               <div style={{ overflow: "hidden" }}>
                 <p style={{ margin: 0, fontSize: "13px", fontWeight: chat.id === activeChatId ? "bold" : "normal", color: chat.id === activeChatId ? "white" : "#d1d5db", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "160px" }}>💬 {chat.title}</p>
@@ -579,20 +614,10 @@ export default function App() {
             ))}
           </div>
         </div>
-
-        {/* <div style={{ padding: "12px", borderTop: `1px solid ${S.border}` }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
-            <span style={{ background: "#14532d", color: S.green, padding: "4px 10px", borderRadius: "8px", fontSize: "11px", fontWeight: "bold" }}>⚡ Powered by Groq</span>
-            <span style={{ background: "#1e3a5f", color: "#60a5fa", padding: "4px 10px", borderRadius: "8px", fontSize: "11px", fontWeight: "bold" }}>🆓 100% Free Forever</span>
-            <span style={{ background: "#3b1f00", color: "#fbbf24", padding: "4px 10px", borderRadius: "8px", fontSize: "11px", fontWeight: "bold" }}>🌐 Open Source</span>
-          </div>
-        </div> */}
       </div>
 
       {/* MAIN */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, height: "100vh", overflow: "hidden" }}>
-
-        {/* HEADER */}
         <div style={{ padding: "12px 16px", borderBottom: `1px solid ${S.border}`, display: "flex", alignItems: "center", gap: "10px", background: S.sidebar, flexShrink: 0 }}>
           <button onClick={() => setSidebarOpen(o => !o)} style={{ background: "none", border: "none", color: "#9ca3af", fontSize: "20px", cursor: "pointer", flexShrink: 0 }}>☰</button>
           <div style={{ flex: 1, minWidth: 0 }}>
@@ -608,14 +633,117 @@ export default function App() {
             style={{ background: examMode ? "#1e3a5f" : "#2a2a2a", border: `1px solid ${examMode ? "#60a5fa" : S.border}`, color: examMode ? "#60a5fa" : "#9ca3af", borderRadius: "10px", padding: "6px 12px", fontWeight: "bold", fontSize: "12px", cursor: "pointer", flexShrink: 0 }}>
             {examMode ? "🎓 ON" : "🎓 Exam"}
           </button>
-          <button onClick={() => { setQuizMode(q => !q); setShowChallenge(false); setShowExamInfo(false); }}
+          <button onClick={() => { setQuizMode(q => !q); setShowChallenge(false); setShowExamInfo(false); setShowDashboard(false); }}
             style={{ background: quizMode ? S.darkGreen : "#2a2a2a", border: `1px solid ${quizMode ? S.green : S.border}`, color: quizMode ? "white" : S.green, borderRadius: "10px", padding: "6px 12px", fontWeight: "bold", fontSize: "12px", cursor: "pointer", flexShrink: 0 }}>
             {quizMode ? "💬 Chat" : "🏆 Quiz"}
           </button>
         </div>
 
         {/* CONTENT */}
-        {showChallenge ? (
+        {showDashboard ? (
+          <div style={{ flex: 1, overflowY: "auto", padding: "20px", background: S.bg }}>
+            <div style={{ maxWidth: "800px", margin: "0 auto" }}>
+              <h2 style={{ color: "#818cf8", marginBottom: "20px" }}>📊 Progress Dashboard</h2>
+
+              {quizHistory.length === 0 ? (
+                <div style={{ textAlign: "center", padding: "60px 20px" }}>
+                  <p style={{ fontSize: "48px" }}>📊</p>
+                  <p style={{ color: "#6b7280", fontSize: "16px" }}>Quiz பண்ணினா இங்க graph வரும்!</p>
+                  <button onClick={() => { setShowDashboard(false); setQuizMode(true); }}
+                    style={{ background: "linear-gradient(135deg, #166534, #15803d)", border: "none", borderRadius: "12px", padding: "12px 24px", color: "white", fontWeight: "bold", fontSize: "14px", cursor: "pointer", marginTop: "16px" }}>
+                    🏆 Quiz Start பண்ணு!
+                  </button>
+                </div>
+              ) : (
+                <>
+                  {/* Stats Cards */}
+                  <div style={{ display: "flex", gap: "12px", marginBottom: "20px", flexWrap: "wrap" }}>
+                    <div style={{ flex: 1, minWidth: "120px", background: S.sidebar, border: `1px solid ${S.border}`, borderRadius: "14px", padding: "16px", textAlign: "center" }}>
+                      <div style={{ fontSize: "28px", fontWeight: 900, color: "#818cf8" }}>{quizHistory.length}</div>
+                      <div style={{ fontSize: "12px", color: "#6b7280" }}>Total Quizzes</div>
+                    </div>
+                    <div style={{ flex: 1, minWidth: "120px", background: S.sidebar, border: `1px solid ${S.border}`, borderRadius: "14px", padding: "16px", textAlign: "center" }}>
+                      <div style={{ fontSize: "28px", fontWeight: 900, color: S.green }}>
+                        {Math.round(quizHistory.reduce((a, h) => a + h.percent, 0) / quizHistory.length)}%
+                      </div>
+                      <div style={{ fontSize: "12px", color: "#6b7280" }}>Average Score</div>
+                    </div>
+                    <div style={{ flex: 1, minWidth: "120px", background: S.sidebar, border: `1px solid ${S.border}`, borderRadius: "14px", padding: "16px", textAlign: "center" }}>
+                      <div style={{ fontSize: "28px", fontWeight: 900, color: "#fbbf24" }}>
+                        {Math.max(...quizHistory.map(h => h.percent))}%
+                      </div>
+                      <div style={{ fontSize: "12px", color: "#6b7280" }}>Best Score</div>
+                    </div>
+                    <div style={{ flex: 1, minWidth: "120px", background: S.sidebar, border: `1px solid ${S.border}`, borderRadius: "14px", padding: "16px", textAlign: "center" }}>
+                      <div style={{ fontSize: "28px", fontWeight: 900, color: "#f87171" }}>
+                        {weakTopics.length}
+                      </div>
+                      <div style={{ fontSize: "12px", color: "#6b7280" }}>Weak Topics</div>
+                    </div>
+                  </div>
+
+                  {/* Line Chart */}
+                  <div style={{ background: S.sidebar, border: `1px solid ${S.border}`, borderRadius: "14px", padding: "20px", marginBottom: "16px" }}>
+                    <p style={{ color: "#818cf8", fontWeight: "bold", margin: "0 0 16px", fontSize: "14px" }}>📈 Score History</p>
+                    <ResponsiveContainer width="100%" height={200}>
+                      <LineChart data={chartData}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#2a2a2a" />
+                        <XAxis dataKey="name" stroke="#6b7280" fontSize={12} />
+                        <YAxis stroke="#6b7280" fontSize={12} domain={[0, 100]} />
+                        <Tooltip contentStyle={{ background: "#1a1a1a", border: "1px solid #2a2a2a", borderRadius: "8px", color: "white" }} />
+                        <Line type="monotone" dataKey="score" stroke="#818cf8" strokeWidth={2} dot={{ fill: "#818cf8", r: 4 }} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+
+                  {/* Bar Chart */}
+                  {subjectChartData.length > 1 && (
+                    <div style={{ background: S.sidebar, border: `1px solid ${S.border}`, borderRadius: "14px", padding: "20px", marginBottom: "16px" }}>
+                      <p style={{ color: "#60a5fa", fontWeight: "bold", margin: "0 0 16px", fontSize: "14px" }}>📊 Subject-wise Average</p>
+                      <ResponsiveContainer width="100%" height={200}>
+                        <BarChart data={subjectChartData}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#2a2a2a" />
+                          <XAxis dataKey="subject" stroke="#6b7280" fontSize={12} />
+                          <YAxis stroke="#6b7280" fontSize={12} domain={[0, 100]} />
+                          <Tooltip contentStyle={{ background: "#1a1a1a", border: "1px solid #2a2a2a", borderRadius: "8px", color: "white" }} />
+                          <Bar dataKey="avg" fill="#4ade80" radius={[4, 4, 0, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  )}
+
+                  {/* Recent History */}
+                  <div style={{ background: S.sidebar, border: `1px solid ${S.border}`, borderRadius: "14px", padding: "20px", marginBottom: "16px" }}>
+                    <p style={{ color: "#e5e7eb", fontWeight: "bold", margin: "0 0 12px", fontSize: "14px" }}>🕐 Recent Quizzes</p>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                      {quizHistory.slice(0, 5).map((h, i) => (
+                        <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", background: S.bg, borderRadius: "10px" }}>
+                          <div>
+                            <span style={{ fontWeight: "bold", fontSize: "13px" }}>{h.subject}</span>
+                            <span style={{ color: "#6b7280", fontSize: "11px", marginLeft: "8px" }}>{h.date} {h.time}</span>
+                          </div>
+                          <span style={{ fontWeight: "bold", fontSize: "15px", color: h.percent >= 80 ? S.green : h.percent >= 60 ? "#fbbf24" : "#f87171" }}>
+                            {h.score}/{h.total} ({h.percent}%)
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <button onClick={() => { setShowDashboard(false); setQuizMode(true); }}
+                    style={{ background: "linear-gradient(135deg, #166534, #15803d)", border: "none", borderRadius: "12px", padding: "12px 24px", color: "white", fontWeight: "bold", fontSize: "14px", cursor: "pointer", marginRight: "8px" }}>
+                    🏆 New Quiz
+                  </button>
+                  <button onClick={() => setShowDashboard(false)}
+                    style={{ background: "#2a2a2a", border: `1px solid ${S.border}`, borderRadius: "12px", padding: "12px 24px", color: "#9ca3af", cursor: "pointer", fontSize: "14px" }}>
+                    💬 Chat-க்கு போ
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+
+        ) : showChallenge ? (
           <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", background: S.bg, padding: "20px", overflowY: "auto" }}>
             <div style={{ background: S.sidebar, border: `1px solid ${S.border}`, borderRadius: "20px", padding: "24px", width: "100%", maxWidth: "560px" }}>
               <div style={{ textAlign: "center", marginBottom: "16px" }}>
@@ -732,7 +860,6 @@ export default function App() {
 
         ) : (
           <>
-            {/* MESSAGES */}
             <div style={{ flex: 1, overflowY: "auto", padding: "20px" }}>
               {(!activeChat?.messages?.length) && (
                 <div style={{ textAlign: "center", marginTop: "10%" }}>
@@ -794,7 +921,6 @@ export default function App() {
               <div ref={bottomRef} />
             </div>
 
-            {/* INPUT */}
             <div style={{ borderTop: `1px solid ${S.border}`, background: S.sidebar, flexShrink: 0 }}>
               {filePreview && (
                 <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "8px 16px", background: S.bg, borderBottom: `1px solid ${S.border}` }}>
