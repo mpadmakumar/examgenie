@@ -341,6 +341,18 @@ export default function App() {
   const [examInfoType, setExamInfoType] = useState("syllabus");
   const [examInfoLoading, setExamInfoLoading] = useState(false);
   const fileRef = useRef(null);
+  const [showMockTest, setShowMockTest] = useState(false);
+const [mockTestData, setMockTestData] = useState(null);
+const [mockTestLoading, setMockTestLoading] = useState(false);
+const [mockCurrent, setMockCurrent] = useState(0);
+const [mockSelected, setMockSelected] = useState(null);
+const [mockAnswered, setMockAnswered] = useState(false);
+const [mockScore, setMockScore] = useState(0);
+const [mockFinished, setMockFinished] = useState(false);
+const [mockTimeLeft, setMockTimeLeft] = useState(0);
+const [mockSelectedExam, setMockSelectedExam] = useState("TNPSC");
+const [mockNumQuestions, setMockNumQuestions] = useState(10);
+const [mockWrongTopics, setMockWrongTopics] = useState([]);
   const bottomRef = useRef(null);
   const isMobile = window.innerWidth <= 768;
 
@@ -400,6 +412,39 @@ export default function App() {
     setExamInfoLoading(false);
   }
 
+async function loadMockTest(exam, numQ) {
+  setMockTestLoading(true); setMockTestData(null);
+  setMockCurrent(0); setMockScore(0); setMockSelected(null);
+  setMockAnswered(false); setMockFinished(false); setMockWrongTopics([]);
+  try {
+    const res = await fetch(`${API_URL}/mock-test`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ exam, num_questions: numQ })
+    });
+    const data = await res.json();
+    setMockTestData(data);
+    setMockTimeLeft(data.time_minutes * 60);
+  } catch { }
+  setMockTestLoading(false);
+}
+
+function handleMockAnswer(opt) {
+  if (mockAnswered) return;
+  setMockSelected(opt); setMockAnswered(true);
+  const q = mockTestData.questions[mockCurrent];
+  if (opt.charAt(0) === q.answer) { setMockScore(s => s + 1); }
+  else { if (q.topic) setMockWrongTopics(w => [...w, q.topic]); }
+}
+
+function mockNext() {
+  if (mockCurrent + 1 >= mockTestData.questions.length) {
+    setMockFinished(true);
+    handleQuizComplete(mockWrongTopics, mockScore, mockTestData.questions.length, mockSelectedExam);
+    return;
+  }
+  setMockCurrent(c => c + 1); setMockSelected(null); setMockAnswered(false);
+}
+
   function handleFile(e) {
     const file = e.target.files[0];
     if (!file) return;
@@ -441,7 +486,16 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem("examgenie_weak_topics", JSON.stringify(weakTopics));
   }, [weakTopics]);
-
+useEffect(() => {
+  if (!mockTestData || mockFinished || mockTimeLeft <= 0) return;
+  const timer = setInterval(() => {
+    setMockTimeLeft(t => {
+      if (t <= 1) { clearInterval(timer); setMockFinished(true); return 0; }
+      return t - 1;
+    });
+  }, 1000);
+  return () => clearInterval(timer);
+}, [mockTestData, mockFinished, mockTimeLeft]);
   function updateChat(id, updates) { setChats(cs => cs.map(c => c.id === id ? { ...c, ...updates } : c)); }
 
   function addNewChat() {
@@ -575,6 +629,10 @@ export default function App() {
             style={{ width: "100%", padding: "10px", borderRadius: "10px", border: "1px solid #818cf8", background: showDashboard ? "#1a1a2e" : "transparent", color: "#818cf8", fontWeight: "bold", fontSize: "13px", cursor: "pointer", marginTop: "6px" }}>
             📊 Progress Dashboard
           </button>
+          <button onClick={() => { setShowMockTest(true); setShowChallenge(false); setShowExamInfo(false); setShowDashboard(false); setQuizMode(false); if (isMobile) setSidebarOpen(false); }}
+  style={{ width: "100%", padding: "10px", borderRadius: "10px", border: "1px solid #f87171", background: showMockTest ? "#450a0a" : "transparent", color: "#f87171", fontWeight: "bold", fontSize: "13px", cursor: "pointer", marginTop: "6px" }}>
+  ⏱️ Mock Test
+</button>
         </div>
 
         <div style={{ flex: 1, overflowY: "auto", padding: "0 12px" }}>
@@ -743,61 +801,171 @@ export default function App() {
             </div>
           </div>
 
-        ) : showChallenge ? (
-          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", background: S.bg, padding: "20px", overflowY: "auto" }}>
-            <div style={{ background: S.sidebar, border: `1px solid ${S.border}`, borderRadius: "20px", padding: "24px", width: "100%", maxWidth: "560px" }}>
-              <div style={{ textAlign: "center", marginBottom: "16px" }}>
-                <span style={{ fontSize: "36px" }}>🏆</span>
-                <h2 style={{ color: "#fbbf24", margin: "4px 0 0", fontSize: "1.3rem" }}>Daily Challenge</h2>
-                <p style={{ color: "#6b7280", margin: "4px 0 0", fontSize: "12px" }}>
-                  {dailyChallenge ? `${dailyChallenge.level} • ${dailyChallenge.subject} • ${dailyChallenge.exam}` : "Loading..."}
-                </p>
-              </div>
-              {!dailyChallenge ? (
-                <div style={{ textAlign: "center", padding: "40px" }}><p style={{ color: "#fbbf24" }}>⏳ Loading...</p></div>
-              ) : (
-                <>
-                  <div style={{ background: S.bg, borderRadius: "14px", padding: "20px", marginBottom: "16px" }}>
-                    <p style={{ color: "#9ca3af", fontSize: "12px", margin: "0 0 8px" }}>📅 {dailyChallenge.date}</p>
-                    <p style={{ fontSize: "17px", fontWeight: "600", lineHeight: "1.6", margin: 0 }}>{dailyChallenge.question}</p>
-                  </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginBottom: "16px" }}>
-                    {dailyChallenge.options?.map((opt, i) => {
-                      const isCorrect = opt.charAt(0) === dailyChallenge.answer;
-                      const isSelected = challengeSelected === opt;
-                      let bg = "#1e1e1e", border = "#2a2a2a", color = "white";
-                      if (challengeAnswered) {
-                        if (isCorrect) { bg = "#14532d"; border = "#4ade80"; color = "#4ade80"; }
-                        else if (isSelected) { bg = "#450a0a"; border = "#ef4444"; color = "#ef4444"; }
-                      }
-                      return (
-                        <button key={i} onClick={() => { if (!challengeAnswered) { setChallengeSelected(opt); setChallengeAnswered(true); } }}
-                          style={{ background: bg, border: `2px solid ${border}`, borderRadius: "12px", padding: "14px 18px", color, textAlign: "left", cursor: challengeAnswered ? "default" : "pointer", fontSize: "15px", transition: "all 0.2s" }}>
-                          {opt}
-                          {challengeAnswered && isCorrect && <span style={{ float: "right" }}>✅</span>}
-                          {challengeAnswered && isSelected && !isCorrect && <span style={{ float: "right" }}>❌</span>}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  {challengeAnswered && (
-                    <div style={{ background: "#1a2e1a", border: "1px solid #166534", borderRadius: "12px", padding: "16px", marginBottom: "12px" }}>
-                      <p style={{ color: "#4ade80", fontWeight: "bold", margin: "0 0 4px" }}>
-                        {challengeSelected?.charAt(0) === dailyChallenge.answer ? "🎉 Correct!" : "❌ Wrong!"}
-                      </p>
-                      <p style={{ color: "#d1d5db", margin: 0, lineHeight: "1.6", fontSize: "14px" }}>{dailyChallenge.explanation}</p>
-                    </div>
-                  )}
-                  <div style={{ display: "flex", gap: "8px" }}>
-                    <button onClick={loadDailyChallenge} style={{ flex: 1, background: "#3b1f00", border: "1px solid #f59e0b", borderRadius: "12px", padding: "12px", color: "#fbbf24", fontWeight: "bold", fontSize: "14px", cursor: "pointer" }}>🔄 New</button>
-                    <button onClick={() => setShowChallenge(false)} style={{ flex: 1, background: "#2a2a2a", border: `1px solid ${S.border}`, borderRadius: "12px", padding: "12px", color: "#9ca3af", fontWeight: "bold", fontSize: "14px", cursor: "pointer" }}>💬 Chat</button>
-                  </div>
-                </>
-              )}
+        ) : showMockTest ? (
+  <div style={{ flex: 1, display: "flex", flexDirection: "column", background: S.bg, overflow: "hidden" }}>
+    {/* Mock Test Header */}
+    {mockTestData && !mockFinished && !mockTestLoading && (
+      <div style={{ padding: "12px 20px", background: S.sidebar, borderBottom: `1px solid ${S.border}`, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <span style={{ fontWeight: "bold", color: "#f87171" }}>⏱️ {mockSelectedExam} Mock Test</span>
+        <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+          <span style={{ color: mockTimeLeft < 60 ? "#ef4444" : "#fbbf24", fontWeight: "bold", fontSize: "18px" }}>
+            ⏰ {Math.floor(mockTimeLeft / 60)}:{String(mockTimeLeft % 60).padStart(2, "0")}
+          </span>
+          <span style={{ color: S.green, fontWeight: "bold" }}>{mockCurrent + 1}/{mockTestData.questions.length}</span>
+          <span style={{ background: "#14532d", color: S.green, padding: "4px 10px", borderRadius: "8px", fontSize: "13px" }}>🏆 {mockScore}</span>
+        </div>
+      </div>
+    )}
+
+    <div style={{ flex: 1, overflowY: "auto", padding: "20px" }}>
+      {/* Start Screen */}
+      {!mockTestData && !mockTestLoading && (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "60vh" }}>
+          <div style={{ background: S.sidebar, border: `1px solid ${S.border}`, borderRadius: "20px", padding: "28px", width: "100%", maxWidth: "520px" }}>
+            <div style={{ textAlign: "center", marginBottom: "20px" }}>
+              <span style={{ fontSize: "40px" }}>⏱️</span>
+              <h2 style={{ color: "#f87171", margin: "8px 0 4px" }}>Mock Test</h2>
+              <p style={{ color: "#6b7280", margin: 0, fontSize: "13px" }}>Real exam simulation with timer!</p>
             </div>
+
+            <div style={{ marginBottom: "16px" }}>
+              <p style={{ color: "#9ca3af", fontSize: "11px", fontWeight: "bold", marginBottom: "8px", textTransform: "uppercase" }}>📝 Select Exam</p>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+                {["TNPSC", "NEET", "JEE", "10th TN Board", "12th TN Board"].map(e => (
+                  <button key={e} onClick={() => setMockSelectedExam(e)}
+                    style={{ padding: "8px 16px", borderRadius: "10px", border: `1px solid ${mockSelectedExam === e ? "#f87171" : S.border}`, background: mockSelectedExam === e ? "#450a0a" : "#2a2a2a", color: mockSelectedExam === e ? "#f87171" : "#9ca3af", cursor: "pointer", fontSize: "13px", fontWeight: "bold" }}>
+                    {e}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ marginBottom: "20px" }}>
+              <p style={{ color: "#9ca3af", fontSize: "11px", fontWeight: "bold", marginBottom: "8px", textTransform: "uppercase" }}>❓ Questions</p>
+              <div style={{ display: "flex", gap: "8px" }}>
+                {[5, 10, 25, 50].map(n => (
+                  <button key={n} onClick={() => setMockNumQuestions(n)}
+                    style={{ flex: 1, padding: "10px", borderRadius: "10px", border: `1px solid ${mockNumQuestions === n ? "#f87171" : S.border}`, background: mockNumQuestions === n ? "#450a0a" : "#2a2a2a", color: mockNumQuestions === n ? "#f87171" : "#9ca3af", cursor: "pointer", fontSize: "14px", fontWeight: "bold" }}>
+                    {n}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ background: "#1a1a1a", borderRadius: "12px", padding: "14px", marginBottom: "20px" }}>
+              <p style={{ color: "#9ca3af", fontSize: "12px", margin: "0 0 6px" }}>📋 Exam Details:</p>
+              <div style={{ display: "flex", gap: "16px" }}>
+                <span style={{ color: "#fbbf24", fontSize: "13px" }}>⏰ {mockSelectedExam === "TNPSC" ? "30" : "180"} mins</span>
+                <span style={{ color: S.green, fontSize: "13px" }}>❓ {mockNumQuestions} questions</span>
+                <span style={{ color: "#60a5fa", fontSize: "13px" }}>📚 Mixed subjects</span>
+              </div>
+            </div>
+
+            <button onClick={() => loadMockTest(mockSelectedExam, mockNumQuestions)}
+              style={{ width: "100%", background: "linear-gradient(135deg, #7f1d1d, #dc2626)", border: "none", borderRadius: "12px", padding: "14px", color: "white", fontWeight: "bold", fontSize: "16px", cursor: "pointer", marginBottom: "8px" }}>
+              🚀 Mock Test Start!
+            </button>
+            <button onClick={() => setShowMockTest(false)}
+              style={{ width: "100%", background: "none", border: `1px solid ${S.border}`, borderRadius: "10px", padding: "10px", color: "#9ca3af", fontSize: "13px", cursor: "pointer" }}>
+              ← Back
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Loading */}
+      {mockTestLoading && (
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "60vh" }}>
+          <p style={{ fontSize: "48px" }}>⏳</p>
+          <p style={{ color: "#f87171", fontSize: "18px", fontWeight: "bold" }}>{mockSelectedExam} Mock Test தயாராகுது...</p>
+        </div>
+      )}
+
+      {/* Questions */}
+      {mockTestData && !mockFinished && !mockTestLoading && (
+        <div style={{ maxWidth: "700px", margin: "0 auto" }}>
+          <div style={{ background: S.sidebar, border: `1px solid ${S.border}`, borderRadius: "16px", padding: "24px", marginBottom: "16px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
+              <p style={{ color: "#9ca3af", fontSize: "12px", margin: 0 }}>
+                Q{mockCurrent + 1} • {mockTestData.questions[mockCurrent].subject}
+                {mockTestData.questions[mockCurrent].topic && <span style={{ color: "#818cf8" }}> • {mockTestData.questions[mockCurrent].topic}</span>}
+              </p>
+              <div style={{ background: "#2a2a2a", borderRadius: "999px", height: "6px", width: "120px", alignSelf: "center" }}>
+                <div style={{ width: `${((mockCurrent + 1) / mockTestData.questions.length) * 100}%`, background: "#f87171", height: "6px", borderRadius: "999px" }} />
+              </div>
+            </div>
+            <p style={{ fontSize: "18px", lineHeight: "1.6", margin: 0, fontWeight: "600" }}>{mockTestData.questions[mockCurrent].question}</p>
           </div>
 
-        ) : showExamInfo ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginBottom: "16px" }}>
+            {mockTestData.questions[mockCurrent].options.map((opt, i) => {
+              const isCorrect = opt.charAt(0) === mockTestData.questions[mockCurrent].answer;
+              const isSelected = mockSelected === opt;
+              let bg = "#1e1e1e", border = "#2a2a2a", color = "white";
+              if (mockAnswered) {
+                if (isCorrect) { bg = "#14532d"; border = S.green; color = S.green; }
+                else if (isSelected) { bg = "#450a0a"; border = "#ef4444"; color = "#ef4444"; }
+              }
+              return (
+                <button key={i} onClick={() => handleMockAnswer(opt)}
+                  style={{ background: bg, border: `2px solid ${border}`, borderRadius: "12px", padding: "14px 18px", color, textAlign: "left", cursor: mockAnswered ? "default" : "pointer", fontSize: "15px", transition: "all 0.2s" }}>
+                  {opt}
+                  {mockAnswered && isCorrect && <span style={{ float: "right" }}>✅</span>}
+                  {mockAnswered && isSelected && !isCorrect && <span style={{ float: "right" }}>❌</span>}
+                </button>
+              );
+            })}
+          </div>
+
+          {mockAnswered && (
+            <div>
+              <div style={{ background: "#1a2e1a", border: "1px solid #166534", borderRadius: "12px", padding: "16px", marginBottom: "12px" }}>
+                <p style={{ color: S.green, fontWeight: "bold", margin: "0 0 4px" }}>💡 Explanation:</p>
+                <p style={{ color: "#d1d5db", margin: 0, lineHeight: "1.6" }}>{mockTestData.questions[mockCurrent].explanation}</p>
+              </div>
+              <button onClick={mockNext}
+                style={{ width: "100%", background: "linear-gradient(135deg, #7f1d1d, #dc2626)", color: "white", border: "none", borderRadius: "12px", padding: "14px", fontWeight: "bold", fontSize: "16px", cursor: "pointer" }}>
+                {mockCurrent + 1 >= mockTestData.questions.length ? "🏆 Result பாரு" : "அடுத்த Question →"}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Result */}
+      {mockFinished && mockTestData && (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "60vh" }}>
+          <div style={{ background: S.sidebar, border: `1px solid ${S.border}`, borderRadius: "24px", padding: "28px", width: "100%", maxWidth: "480px", textAlign: "center" }}>
+            <div style={{ fontSize: "56px" }}>{mockScore / mockTestData.questions.length >= 0.8 ? "🏆" : mockScore / mockTestData.questions.length >= 0.6 ? "🎉" : "💪"}</div>
+            <h2 style={{ color: "#f87171", margin: "4px 0" }}>Mock Test முடிஞ்சது!</h2>
+            <p style={{ color: "#6b7280", margin: "0 0 20px", fontSize: "12px" }}>{mockSelectedExam} • {mockTestData.questions.length} Questions</p>
+            <div style={{ background: S.bg, borderRadius: "16px", padding: "20px", marginBottom: "16px" }}>
+              <div style={{ fontSize: "48px", fontWeight: 900, color: mockScore / mockTestData.questions.length >= 0.8 ? S.green : mockScore / mockTestData.questions.length >= 0.6 ? "#fbbf24" : "#f87171" }}>
+                {mockScore}/{mockTestData.questions.length}
+              </div>
+              <div style={{ color: "#9ca3af", fontSize: "13px" }}>{Math.round((mockScore / mockTestData.questions.length) * 100)}% correct</div>
+            </div>
+            <div style={{ display: "flex", gap: "8px" }}>
+              <button onClick={() => loadMockTest(mockSelectedExam, mockNumQuestions)}
+                style={{ flex: 1, background: "linear-gradient(135deg, #7f1d1d, #dc2626)", border: "none", borderRadius: "12px", padding: "12px", color: "white", fontWeight: "bold", fontSize: "14px", cursor: "pointer" }}>
+                🔄 Again
+              </button>
+              <button onClick={() => { setMockTestData(null); setMockFinished(false); }}
+                style={{ flex: 1, background: "#2a2a2a", border: `1px solid ${S.border}`, borderRadius: "12px", padding: "12px", color: "#9ca3af", fontWeight: "bold", fontSize: "14px", cursor: "pointer" }}>
+                🎯 New Exam
+              </button>
+              <button onClick={() => setShowMockTest(false)}
+                style={{ flex: 1, background: "#1a1a2e", border: "1px solid #818cf8", borderRadius: "12px", padding: "12px", color: "#818cf8", fontWeight: "bold", fontSize: "14px", cursor: "pointer" }}>
+                💬 Chat
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  </div>
+
+) : showChallenge ? (
           <div style={{ flex: 1, overflowY: "auto", padding: "20px", background: S.bg }}>
             <div style={{ maxWidth: "700px", margin: "0 auto" }}>
               <h2 style={{ color: "#60a5fa", marginBottom: "16px" }}>📚 Exam Prep</h2>

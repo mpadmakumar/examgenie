@@ -461,6 +461,38 @@ Return ONLY JSON."""
     except:
         return jsonify({"error": "Info generate ஆகல!"}), 500
 
+@app.route("/mock-test", methods=["POST"])
+def mock_test():
+    data = request.get_json()
+    exam = data.get("exam", "TNPSC")
+    num_questions = data.get("num_questions", 10)
+    
+    exam_config = {
+        "TNPSC": {"time": 30, "subjects": ["General Studies", "Tamil", "History", "Geography", "Science", "Polity"]},
+        "NEET": {"time": 180, "subjects": ["Physics", "Chemistry", "Biology"]},
+        "JEE": {"time": 180, "subjects": ["Physics", "Chemistry", "Maths"]},
+        "10th TN Board": {"time": 150, "subjects": ["Maths", "Science", "Social", "Tamil", "English"]},
+        "12th TN Board": {"time": 150, "subjects": ["Maths", "Physics", "Chemistry", "Biology"]},
+    }
+    
+    config = exam_config.get(exam, exam_config["TNPSC"])
+    
+    prompt = f"""Generate {num_questions} MCQ questions for {exam} exam mock test.
+Mix questions from these subjects: {', '.join(config['subjects'])}
+Return ONLY JSON:
+{{"exam": "{exam}", "time_minutes": {config['time']}, "questions": [{{"question": "...", "options": ["A)...", "B)...", "C)...", "D)..."], "answer": "A", "explanation": "...", "subject": "...", "topic": "..."}}]}}"""
+
+    response = client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=[{"role": "user", "content": prompt}]
+    )
+    text = response.choices[0].message.content
+    try:
+        result = json.loads(text[text.find("{"):text.rfind("}")+1])
+        return jsonify(result)
+    except:
+        return jsonify({"error": "Mock test generate ஆகல!"}), 500
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
     app.run(debug=False, host="0.0.0.0", port=port)
